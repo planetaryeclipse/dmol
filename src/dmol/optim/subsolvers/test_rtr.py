@@ -4,8 +4,7 @@ import numpy as np
 import pytest
 from pytest import approx
 
-from optim.subsolvers.rtr import _project_onto_ellipsoid, solve_tr_subproblem_m
-
+from dmol.optim.subsolvers.rtr import _project_onto_ellipsoid, solve_tr_subproblem_m
 
 # def _project_onto_ellipsoid(x: np.ndarray, p_mat: np.nparray, b: float) -> np.ndarray:
 #     # this is not the orthogonal projection, only scaling with respect to origin
@@ -22,6 +21,7 @@ from optim.subsolvers.rtr import _project_onto_ellipsoid, solve_tr_subproblem_m
 #
 #         return x_proj
 
+
 def test_project_onto_ellipsoid():
     p_mat = np.array(np.diag([1.0, 1.0]))
     b = 0.9**2
@@ -35,11 +35,11 @@ def test_project_onto_ellipsoid():
 
     print(f"x: {x}, proj_x: {proj_x}, norm_sqr: {norm_sqr}")
 
-
     pass
 
+
 def test_solve_tr_subproblem_m():
-    p = torch.tensor([2., 3.])
+    p = torch.tensor([2.0, 3.0])
     grad_f_k = torch.tensor([1.0, 1.0])
     h_k = torch.eye(2)
     g_k = torch.diag(torch.tensor([1.0, 1.0]))
@@ -49,7 +49,7 @@ def test_solve_tr_subproblem_m():
     rel_acc_k = 1e-4
     damp_k = 0.1
 
-    eta = solve_tr_subproblem_m(p, grad_f_k, h_k, g_k, radius_k, max_iters_k, rel_acc_k, damp_k)
+    eta = solve_tr_subproblem_m(
+        p, grad_f_k, h_k, g_k, radius_k, max_iters_k, rel_acc_k, damp_k
+    )
     print(f"eta: {eta}")
-
-

@@ -2,7 +2,7 @@ import torch
 
 from typing import TypeVarTuple
 
-from diff_mfld.mfld import ComputeMfld
+from dmol.diff_mfld.mfld import ComputeMfld
 
 from abc import ABC, abstractmethod
 

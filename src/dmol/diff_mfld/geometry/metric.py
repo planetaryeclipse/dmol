@@ -5,7 +5,7 @@ import inspect
 
 from torch.func import jacrev
 
-from diff_mfld.geometry.connection import Connection
+from dmol.diff_mfld.geometry.connection import Connection
 
 
 # utility function
@@ -40,9 +40,9 @@ def _eval_christoffels(n, metric_fn, p: torch.Tensor) -> torch.Tensor:
     # print(f"g_inv: {g_inv}")
     # print(f"g_partials: {g_partials}")
     conn_coeffs = 0.5 * (
-            torch.einsum("lr,rjk->ljk", g_inv, g_partials)
-            + torch.einsum("lr,rkj->ljk", g_inv, g_partials)
-            - torch.einsum("lr,jkr->ljk", g_inv, g_partials)
+        torch.einsum("lr,rjk->ljk", g_inv, g_partials)
+        + torch.einsum("lr,rkj->ljk", g_inv, g_partials)
+        - torch.einsum("lr,jkr->ljk", g_inv, g_partials)
     )
     return conn_coeffs
 
@@ -89,6 +89,7 @@ class MetricField:
 # not caring here but when writing the rust library at a future point in time
 # then we will want to have mutable and immutable views
 
+
 # noinspection PyProtectedMember
 class MetricView:
     def __init__(self, metric, inv):
@@ -112,7 +113,11 @@ class MetricView:
         return self._metric._matrix if not self.inv else self._metric._inv_matrix
 
     def __getitem__(self, slice):
-        return self._metric._matrix[slice] if not self._inv else self._metric._inv_matrix[slice]
+        return (
+            self._metric._matrix[slice]
+            if not self._inv
+            else self._metric._inv_matrix[slice]
+        )
 
     def __call__(self, u, v):
         # either takes inner product between tangent vector or covectors
@@ -136,7 +141,9 @@ class PartialsWrapper:
     def __call__(self, p) -> torch.Tensor:
         # computes the partials of the metric tensor at point p with index of
         # the basis of differentiation specified as the last dimension
-        partials = jacrev(lambda p_jac: self._field.fn(*_coords(p_jac)))(p)  # index of diff in first dim
+        partials = jacrev(lambda p_jac: self._field.fn(*_coords(p_jac)))(
+            p
+        )  # index of diff in first dim
         return torch.transpose(torch.transpose(partials, 0, 2), 0, 1)
 
 

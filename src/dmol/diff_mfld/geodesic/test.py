@@ -1,7 +1,7 @@
 import torch
 
-from diff_mfld.geodesic.geodesic_funcs import ExpMethod, LogMethod
-from diff_mfld.geometry.metric import MetricField
+from dmol.diff_mfld.geodesic.geodesic_funcs import ExpMethod, LogMethod
+from dmol.diff_mfld.geometry.metric import MetricField
 
 def noneuclidean_metric(x1, x2):
     # elements are assigned to this metric to preserve gradient history

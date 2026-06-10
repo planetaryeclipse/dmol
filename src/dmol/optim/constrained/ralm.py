@@ -4,16 +4,21 @@ from copy import copy
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from optim.results import CustomConstrSolverResult, ConstrSolverResult, ConstrSolverHistory, SubsolverCfg, \
-    ConstrSolverCfg
-from optim.subsolver_methods import SubsolverMethod
-from optim.subsolvers.rgd import RiemGradDescentCfg
-from diff_mfld.geometry.funcs import MfldFunc, FuncArgs
-from diff_mfld.mfld import ComputeMfld
-
+from dmol.optim.results import (
+    CustomConstrSolverResult,
+    ConstrSolverResult,
+    ConstrSolverHistory,
+    SubsolverCfg,
+    ConstrSolverCfg,
+)
+from dmol.optim.subsolver_methods import SubsolverMethod
+from dmol.optim.subsolvers.rgd import RiemGradDescentCfg
+from dmol.diff_mfld.geometry.funcs import MfldFunc, FuncArgs
+from dmol.diff_mfld.mfld import ComputeMfld
 
 # implements the Riemannian Augmented Lagrangian Method (RALM) described in "Simple Algorithms for Optimization on
 # Riemannian Manifolds with Constraints"
+
 
 @dataclass
 class RalmCfg(ConstrSolverCfg):
@@ -24,20 +29,21 @@ class RalmCfg(ConstrSolverCfg):
     penalty_0: float = 0.01
     penalty_growth: float = 1.02  # > 1
 
-    g_mult_0: float = 0.
-    g_mult_min: float = 0.
-    g_mult_max: float = 1000.
+    g_mult_0: float = 0.0
+    g_mult_min: float = 0.0
+    g_mult_max: float = 1000.0
 
-    h_mult_0: float = 0.
-    h_mult_min: float = -1000.
-    h_mult_max: float = 1000.
+    h_mult_0: float = 0.0
+    h_mult_min: float = -1000.0
+    h_mult_max: float = 1000.0
 
     ratio: float = 0.5  # in (0, 1)
     min_step: float = 0.02
 
     subsolver_method: SubsolverMethod = SubsolverMethod.RIEM_GRAD_DESCENT
     subsolver_cfg: SubsolverCfg = field(
-        default_factory=RiemGradDescentCfg)  # must be type corresponding to the subsolver method
+        default_factory=RiemGradDescentCfg
+    )  # must be type corresponding to the subsolver method
     max_iters: int = 1000
 
 
@@ -78,18 +84,20 @@ class RalmResult(CustomConstrSolverResult):
                 hs_hist=self.history.hs_hist,
                 g_mults_hist=self.history.g_mults_hist,
                 h_mults_hist=self.history.h_mults_hist,
-            )
+            ),
         )
 
 
 class AugmentedLagrangian(MfldFunc):
-    def __init__(self,
-                 f: MfldFunc,
-                 gs: List[MfldFunc],
-                 hs: List[MfldFunc],
-                 g_mults: List[float],
-                 h_mults: List[float],
-                 penalty: float):
+    def __init__(
+        self,
+        f: MfldFunc,
+        gs: List[MfldFunc],
+        hs: List[MfldFunc],
+        g_mults: List[float],
+        h_mults: List[float],
+        penalty: float,
+    ):
         self._f = f
         self._gs = gs
         self._hs = hs
@@ -97,9 +105,14 @@ class AugmentedLagrangian(MfldFunc):
         self._h_mults = h_mults
         self._penalty = penalty
 
-    def value(self, p: torch.Tensor, cfg: ComputeMfld, *args: *FuncArgs) -> torch.Tensor:
+    def value(
+        self, p: torch.Tensor, cfg: ComputeMfld, *args: *FuncArgs
+    ) -> torch.Tensor:
         g_sum = sum(
-            torch.maximum(torch.tensor(0.), g_mult / self._penalty + g.value(p, cfg, *args)) ** 2
+            torch.maximum(
+                torch.tensor(0.0), g_mult / self._penalty + g.value(p, cfg, *args)
+            )
+            ** 2
             for g, g_mult in zip(self._gs, self._g_mults)
         )
         h_sum = sum(
@@ -114,17 +127,24 @@ class AugmentedLagrangian(MfldFunc):
 
         g_diff_sum = torch.zeros_like(p)
         g_diff_sum += sum(
-            2. * (g_mult / self._penalty + g_val) * g.diff(p, cfg,
-                                                           *args) if g_val + g_mult / self._penalty >= 0. else 0.0
+            (
+                2.0 * (g_mult / self._penalty + g_val) * g.diff(p, cfg, *args)
+                if g_val + g_mult / self._penalty >= 0.0
+                else 0.0
+            )
             for g, g_mult, g_val in zip(self._gs, self._g_mults, g_vals)
         )
 
         h_diff_sum = torch.zeros_like(p)
         h_diff_sum += sum(
-            2.0 * (h_mult / self._penalty + h.value(p, cfg, *args)) * h.diff(p, cfg, *args)
+            2.0
+            * (h_mult / self._penalty + h.value(p, cfg, *args))
+            * h.diff(p, cfg, *args)
             for h, h_mult in zip(self._hs, self._h_mults)
         )
-        aug_diff_value = self._f.diff(p, cfg, *args) + self._penalty / 2. * (g_diff_sum + h_diff_sum)
+        aug_diff_value = self._f.diff(p, cfg, *args) + self._penalty / 2.0 * (
+            g_diff_sum + h_diff_sum
+        )
 
         # print(f"p: {p}")
         # print(f"g diff sum: {g_diff_sum}")
@@ -140,14 +160,26 @@ class AugmentedLagrangian(MfldFunc):
         h_diff_vals = [h.diff(p, cfg, *args) for h in self._hs]
 
         g_hess_sum = sum(
-            2.0 * torch.outer(g_diff, g_diff) + 2.0 * (g_val + g_mult / self._penalty) * g.hess(p, cfg, *args)
-            if g_val + g_mult / self._penalty >= 0. else 0.0
-            for g, g_mult, g_val, g_diff in zip(self._gs, self._g_mults, g_vals, g_diff_vals))
-        h_hess_sum = sum(
-            2.0 * torch.outer(h_diff, h_diff) + 2.0 * (h_val / self._penalty) * h.hess(p, cfg, *args)
-            for h, h_mult, h_val, h_diff in zip(self._hs, self._h_mults, h_vals, h_diff_vals)
+            (
+                2.0 * torch.outer(g_diff, g_diff)
+                + 2.0 * (g_val + g_mult / self._penalty) * g.hess(p, cfg, *args)
+                if g_val + g_mult / self._penalty >= 0.0
+                else 0.0
+            )
+            for g, g_mult, g_val, g_diff in zip(
+                self._gs, self._g_mults, g_vals, g_diff_vals
+            )
         )
-        aug_hess_value = self._f.hess(p, cfg, *args) + self._penalty / 2.0 * (g_hess_sum + h_hess_sum)
+        h_hess_sum = sum(
+            2.0 * torch.outer(h_diff, h_diff)
+            + 2.0 * (h_val / self._penalty) * h.hess(p, cfg, *args)
+            for h, h_mult, h_val, h_diff in zip(
+                self._hs, self._h_mults, h_vals, h_diff_vals
+            )
+        )
+        aug_hess_value = self._f.hess(p, cfg, *args) + self._penalty / 2.0 * (
+            g_hess_sum + h_hess_sum
+        )
         return aug_hess_value
 
     @property
@@ -176,13 +208,13 @@ class AugmentedLagrangian(MfldFunc):
 
 
 def ralm(
-        f: MfldFunc,
-        gs: List[MfldFunc],
-        hs: List[MfldFunc],
-        p0: torch.Tensor,
-        mfld: ComputeMfld,
-        cfg: RalmCfg,
-        *args: *FuncArgs
+    f: MfldFunc,
+    gs: List[MfldFunc],
+    hs: List[MfldFunc],
+    p0: torch.Tensor,
+    mfld: ComputeMfld,
+    cfg: RalmCfg,
+    *args: *FuncArgs,
 ) -> RalmResult:
     g_mults = cfg.g_mult_0 * torch.ones((len(gs),))
     h_mults = cfg.h_mult_0 * torch.ones((len(hs),))
@@ -208,14 +240,18 @@ def ralm(
 
     # sets up the augmented lagrangian function which will be minimized by the selected subsolver optimization method
     # prior to the update of the other parameters and the lagrangian multipliers
-    augm_lagr = AugmentedLagrangian(f, gs, hs, g_mults.tolist(), h_mults.tolist(), penalty)
+    augm_lagr = AugmentedLagrangian(
+        f, gs, hs, g_mults.tolist(), h_mults.tolist(), penalty
+    )
 
     successfully_converged = False
     idx_counter = 0
 
     for idx in range(cfg.max_iters):
         # updates the expected accuracy inside the subsolver
-        subsolver_cfg.criterion_eps = acc_tol  # updates the expected accuracy inside the subsolver
+        subsolver_cfg.criterion_eps = (
+            acc_tol  # updates the expected accuracy inside the subsolver
+        )
 
         # updates the subproblem
         augm_lagr.g_mults = g_mults.tolist()
@@ -223,7 +259,9 @@ def ralm(
         augm_lagr.penalty = penalty
 
         # attempts to solve the subproblem
-        subsolver_result = cfg.subsolver_method(augm_lagr, p, mfld, subsolver_cfg, *args)
+        subsolver_result = cfg.subsolver_method(
+            augm_lagr, p, mfld, subsolver_cfg, *args
+        )
         if not subsolver_result.success:
             print(f"subsolver failed: {subsolver_result}")
             return RalmResult(
@@ -240,7 +278,7 @@ def ralm(
                     g_mults_hist=torch.stack(g_mults_hist),
                     h_mults_hist=torch.stack(h_mults_hist),
                     subsolver_iters_hist=subsolver_iters_hist,
-                )
+                ),
             )
 
         # assume that the subsolver was successful after this point
@@ -260,8 +298,16 @@ def ralm(
         next_g_vals = torch.tensor([g.value(next_p, mfld, *args) for g in gs])
         next_h_vals = torch.tensor([h.value(next_p, mfld, *args) for h in hs])
 
-        next_h_mults = torch.clamp(h_mults + penalty * torch.tensor(next_h_vals), cfg.h_mult_min, cfg.h_mult_max)
-        next_g_mults = torch.clamp(g_mults + penalty * torch.tensor(next_g_vals), cfg.g_mult_min, cfg.g_mult_max)
+        next_h_mults = torch.clamp(
+            h_mults + penalty * torch.tensor(next_h_vals),
+            cfg.h_mult_min,
+            cfg.h_mult_max,
+        )
+        next_g_mults = torch.clamp(
+            g_mults + penalty * torch.tensor(next_g_vals),
+            cfg.g_mult_min,
+            cfg.g_mult_max,
+        )
 
         # print(f"\tnext_g_mults: {next_g_mults}")
         # print(f"\tnext_h_mults: {next_h_mults}")
@@ -273,17 +319,27 @@ def ralm(
         num_hs = len(hs)
 
         if idx == 0 or (
-                # NOTE: relies on short-circuiting for sigma to not be None at this point (only present here for typing)
-                sigma is not None and
-                torch.any(
-                    torch.maximum(
-                        torch.unsqueeze(torch.tensor(next_h_vals).abs(), -1).repeat((1, num_gs)),  # stacks horiz
-                        torch.unsqueeze(next_sigma.abs(), 0).repeat((num_hs, 1))  # stacks vertically
-                    ) <= cfg.ratio * torch.maximum(
-                        torch.unsqueeze(torch.tensor(current_h_vals).abs(), -1).repeat((1, num_gs)),  # stacks horiz
-                        torch.unsqueeze(sigma.abs(), 0).repeat((num_hs, 1))  # stacks vertically
-                    )
+            # NOTE: relies on short-circuiting for sigma to not be None at this point (only present here for typing)
+            sigma is not None
+            and torch.any(
+                torch.maximum(
+                    torch.unsqueeze(torch.tensor(next_h_vals).abs(), -1).repeat(
+                        (1, num_gs)
+                    ),  # stacks horiz
+                    torch.unsqueeze(next_sigma.abs(), 0).repeat(
+                        (num_hs, 1)
+                    ),  # stacks vertically
                 )
+                <= cfg.ratio
+                * torch.maximum(
+                    torch.unsqueeze(torch.tensor(current_h_vals).abs(), -1).repeat(
+                        (1, num_gs)
+                    ),  # stacks horiz
+                    torch.unsqueeze(sigma.abs(), 0).repeat(
+                        (num_hs, 1)
+                    ),  # stacks vertically
+                )
+            )
         ):
             next_penalty = penalty  # no change in penalty
         else:
@@ -332,5 +388,5 @@ def ralm(
             g_mults_hist=torch.stack(g_mults_hist),
             h_mults_hist=torch.stack(h_mults_hist),
             subsolver_iters_hist=subsolver_iters_hist,
-        )
+        ),
     )

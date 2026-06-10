@@ -8,16 +8,16 @@ from multiprocessing.dummy import Pool  # threads
 
 from typing import List, Tuple, Any, Optional
 
-from diff_mfld_optim.geometry.funcs import FuncArgs, MfldFunc
+from dmol.diff_mfld.geometry.funcs import FuncArgs, MfldFunc
 
 
-from diff_mfld_optim.optim.constrained import (
+from dmol.optim.constrained import (
     ConstrainedSolverCfg,
     ConstrainedSolverMethod,
     ConstrainedSolverResult,
 )
 
-from diff_mfld_optim.mfld_util import MfldCfg
+from dmol.diff_mfld.mfld import ComputeMfld
 
 
 class DiffMfldOptimProblem(Function):
@@ -28,7 +28,7 @@ class DiffMfldOptimProblem(Function):
         f: MfldFunc,  # cost function
         gs: List[MfldFunc],  # inequality constraint functions
         hs: List[MfldFunc],  # equality constraint functions
-        mfld_cfg: MfldCfg,
+        mfld_cfg: ComputeMfld,
         solve_cfg: ConstrainedSolverCfg,
         method: ConstrainedSolverMethod,
         pre_compute_result: Optional[ConstrainedSolverResult],
@@ -69,15 +69,15 @@ class DiffMfldOptimProblem(Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        (p, p_optimal) = ctx.saved_tensors
+        p, p_optimal = ctx.saved_tensors
 
         f: MfldFunc
         gs: List[MfldFunc]
         g_mults: torch.Tensor
         g_vals: torch.Tensor
-        mfld_cfg: MfldCfg
+        mfld_cfg: ComputeMfld
 
-        (f, gs, g_mults, g_vals, mfld_cfg, func_args) = (
+        f, gs, g_mults, g_vals, mfld_cfg, func_args = (
             ctx.f,  # cost function
             ctx.gs,  # inequality functions
             ctx.g_mults,  # lagrangian multipliers of inequality constraints
@@ -132,7 +132,7 @@ class DiffMfldOptimLayer(Module):
         f: MfldFunc,
         gs: List[MfldFunc],
         hs: List[MfldFunc],
-        mfld_cfg: MfldCfg,
+        mfld_cfg: ComputeMfld,
         solve_cfg: ConstrainedSolverCfg,
         method: ConstrainedSolverMethod,
     ):

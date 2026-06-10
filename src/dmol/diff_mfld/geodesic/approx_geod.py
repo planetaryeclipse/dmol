@@ -4,10 +4,9 @@ import torch
 import inspect
 
 from scipy.optimize import root
-from diff_mfld.geometry.connection import Connection
+from dmol.diff_mfld.geometry.connection import Connection
 
 from typing import List, Callable
-
 
 # wrapper class which matches the expected signature and then computes all required connection coefficients (and
 # partials if applicable) before passing it to the approximate notebooks below
@@ -27,7 +26,7 @@ def _count_conn_coeff_args(map):
 
 
 def _compute_conn_coeff_args(
-        count: int, p: torch.Tensor, conn: Connection
+    count: int, p: torch.Tensor, conn: Connection
 ) -> List[np.ndarray]:
     conn_coeffs_with_partials = []
     if count > 0:
@@ -44,7 +43,7 @@ class ApproxExpMapWrapper:
         self._coeffs_count = _count_conn_coeff_args(exp_map)
 
     def __call__(
-            self, p: torch.Tensor, v: torch.Tensor, conn: Connection, alpha: float
+        self, p: torch.Tensor, v: torch.Tensor, conn: Connection, alpha: float
     ) -> torch.Tensor:
         conn_coeffs_with_partials = _compute_conn_coeff_args(
             self._coeffs_count, p, conn
@@ -63,10 +62,11 @@ class ApproxLogMapWrapper:
         self._coeffs_count = _count_conn_coeff_args(log_map)
 
     def __call__(
-            self, p: torch.Tensor, q: torch.Tensor, conn: Connection, alpha: float
+        self, p: torch.Tensor, q: torch.Tensor, conn: Connection, alpha: float
     ) -> torch.Tensor:
         conn_coeffs_with_partials = _compute_conn_coeff_args(
-            self._coeffs_count, p, conn)
+            self._coeffs_count, p, conn
+        )
 
         p_numpy = p.detach().numpy()
         q_numpy = q.detach().numpy()
@@ -89,19 +89,24 @@ def approx_exp_map_o1(p: np.ndarray, v: np.ndarray, alpha: float) -> np.ndarray:
 
 
 def approx_exp_map_o2(
-        p: np.ndarray, v: np.ndarray, alpha: float, conn_coeffs: np.ndarray
+    p: np.ndarray, v: np.ndarray, alpha: float, conn_coeffs: np.ndarray
 ) -> np.ndarray:
-    return p + f0(v) * alpha + 1. / 2. * f1(v, conn_coeffs) * alpha**2
+    return p + f0(v) * alpha + 1.0 / 2.0 * f1(v, conn_coeffs) * alpha**2
 
 
 def approx_exp_map_o3(
-        p: np.ndarray,
-        v: np.ndarray,
-        alpha: float,
-        conn_coeffs: np.ndarray,
-        conn_coeffs_partials: np.ndarray,
+    p: np.ndarray,
+    v: np.ndarray,
+    alpha: float,
+    conn_coeffs: np.ndarray,
+    conn_coeffs_partials: np.ndarray,
 ) -> np.ndarray:
-    return p + f0(v) * alpha + 1. / 2. * f1(v, conn_coeffs) * alpha**2 + 1. / 6. * f2(v, conn_coeffs, conn_coeffs_partials) * alpha**3
+    return (
+        p
+        + f0(v) * alpha
+        + 1.0 / 2.0 * f1(v, conn_coeffs) * alpha**2
+        + 1.0 / 6.0 * f2(v, conn_coeffs, conn_coeffs_partials) * alpha**3
+    )
 
 
 def _solve_approx_log_map(f_fn, fprime_fn, p, q, order, alpha):
@@ -124,28 +129,35 @@ def approx_log_map_o1(p: np.ndarray, q: np.ndarray, alpha: float) -> np.ndarray:
 
 
 def approx_log_map_o2(
-        p: np.ndarray, q: np.ndarray, alpha: float, conn_coeffs: np.ndarray
+    p: np.ndarray, q: np.ndarray, alpha: float, conn_coeffs: np.ndarray
 ) -> np.ndarray:
-    f_fn = lambda v: -q + (p + f0(v) * alpha + 1. / 2. * f1(v, conn_coeffs) * alpha**2)
-    fprime_fn = lambda v: f0_jacob(v) * alpha + 1. / 2. * f1_jacob(v, conn_coeffs) * alpha**2
+    f_fn = lambda v: -q + (
+        p + f0(v) * alpha + 1.0 / 2.0 * f1(v, conn_coeffs) * alpha**2
+    )
+    fprime_fn = (
+        lambda v: f0_jacob(v) * alpha + 1.0 / 2.0 * f1_jacob(v, conn_coeffs) * alpha**2
+    )
 
     return _solve_approx_log_map(f_fn, fprime_fn, p, q, 2, alpha)
 
 
 def approx_log_map_o3(
-        p: np.ndarray,
-        q: np.ndarray,
-        alpha: float,
-        conn_coeffs: np.ndarray,
-        conn_coeffs_fo_partials: np.ndarray,
+    p: np.ndarray,
+    q: np.ndarray,
+    alpha: float,
+    conn_coeffs: np.ndarray,
+    conn_coeffs_fo_partials: np.ndarray,
 ) -> np.ndarray:
     f_fn = lambda v: -q + (
-            p + f0(v) * alpha + 1. / 2. * f1(v, conn_coeffs) * alpha**2 + 1. / 6. * f2(v, conn_coeffs, conn_coeffs_fo_partials) * alpha**3
+        p
+        + f0(v) * alpha
+        + 1.0 / 2.0 * f1(v, conn_coeffs) * alpha**2
+        + 1.0 / 6.0 * f2(v, conn_coeffs, conn_coeffs_fo_partials) * alpha**3
     )
     fprime_fn = (
         lambda v: f0_jacob(v) * alpha
-                  + 1. / 2. * f1_jacob(v, conn_coeffs) * alpha**2
-                  + 1. / 6. * f2_jacob(v, conn_coeffs, conn_coeffs_fo_partials) * alpha**3
+        + 1.0 / 2.0 * f1_jacob(v, conn_coeffs) * alpha**2
+        + 1.0 / 6.0 * f2_jacob(v, conn_coeffs, conn_coeffs_fo_partials) * alpha**3
     )
 
     return _solve_approx_log_map(f_fn, fprime_fn, p, q, 3, alpha)
@@ -177,7 +189,7 @@ def f1_jacob(y: np.ndarray, conn_coeffs: np.ndarray) -> np.ndarray:
 
 
 def f2(
-        y: np.ndarray, conn_coeffs: np.ndarray, conn_coeffs_fo_partials: np.ndarray
+    y: np.ndarray, conn_coeffs: np.ndarray, conn_coeffs_fo_partials: np.ndarray
 ) -> np.ndarray:
     result = -np.einsum("kabc,a,b,c->k", conn_coeffs_fo_partials, y, y, y)
     result += np.einsum("kab,a,bcd,c,d->k", conn_coeffs, y, conn_coeffs, y, y)
@@ -187,7 +199,7 @@ def f2(
 
 
 def f2_jacob(
-        y: np.ndarray, conn_coeffs: np.ndarray, conn_coeffs_partials: np.ndarray
+    y: np.ndarray, conn_coeffs: np.ndarray, conn_coeffs_partials: np.ndarray
 ) -> np.ndarray:
     # first term
     result = -np.einsum("kabc,b,c->ka", conn_coeffs_partials, y, y)
@@ -205,6 +217,7 @@ def f2_jacob(
     result += np.einsum("kab,acd,b,c->kd", conn_coeffs, conn_coeffs, y, y)
 
     return result
+
 
 # older approximate code from research paper (now unused)
 

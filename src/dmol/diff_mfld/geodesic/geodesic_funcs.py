@@ -4,7 +4,7 @@ import numpy as np
 from enum import Enum
 from scipy.integrate import solve_ivp, solve_bvp
 
-from diff_mfld.geodesic.approx_geod import (
+from dmol.diff_mfld.geodesic.approx_geod import (
     approx_exp_map_o1,
     approx_exp_map_o2,
     approx_exp_map_o3,
@@ -12,14 +12,14 @@ from diff_mfld.geodesic.approx_geod import (
     approx_log_map_o2,
     approx_log_map_o3,
     ApproxExpMapWrapper,
-    ApproxLogMapWrapper
+    ApproxLogMapWrapper,
 )
-from diff_mfld.geometry.connection import Connection
+from dmol.diff_mfld.geometry.connection import Connection
 
 LOG_MAP_INITIAL_MESH_SIZE = 10
 
 LOG_MAP_BVP_MAX_NODES = 500
-LOG_MAP_BVP_TOL = 1E-2
+LOG_MAP_BVP_TOL = 1e-2
 
 
 # exact notebooks
@@ -48,7 +48,9 @@ def _geod_ivp_fn(t, y: np.ndarray, n: int, conn: Connection):
     return np.concat((dot_p, dot_v), axis=0)
 
 
-def ivp_exp_map(p: torch.Tensor, v: torch.Tensor, conn: Connection, alpha: float = 1.0) -> torch.Tensor:
+def ivp_exp_map(
+    p: torch.Tensor, v: torch.Tensor, conn: Connection, alpha: float = 1.0
+) -> torch.Tensor:
     n = p.shape[0]
     result = solve_ivp(
         _geod_ivp_fn,
@@ -70,20 +72,26 @@ def _geod_bc_fn(ya, yb, p: np.ndarray, q: np.ndarray, n: int):
     # print(f'pos_a: {pos_a}\t\t\t\tvel_a: {vel_a}')
     # print(f'pos_b: {pos_b}\t\t\t\tvel_b: {vel_b}')
 
-    return np.hstack((
-        pos_a - p,
-        pos_b - q
-    ))
+    return np.hstack((pos_a - p, pos_b - q))
 
 
-def bvp_log_map(p: torch.Tensor, q: torch.Tensor, conn: Connection, alpha: float = 1.0) -> torch.Tensor:
+def bvp_log_map(
+    p: torch.Tensor,
+    q: torch.Tensor,
+    conn: Connection,
+    alpha: float = 1.0,
+    tol: float = LOG_MAP_BVP_TOL,
+    max_nodes: int = LOG_MAP_BVP_MAX_NODES,
+) -> torch.Tensor:
     p_numpy, q_numpy = p.detach().numpy(), q.detach().numpy()
 
     t_initial_mesh = np.linspace(0.0, alpha, LOG_MAP_INITIAL_MESH_SIZE)
 
     # constructs Euclidean guess
     p_guess_mesh = np.linspace(p_numpy, q_numpy, LOG_MAP_INITIAL_MESH_SIZE).T
-    v_guess_mesh = np.tile(np.reshape(q - p, (len(q), 1)), (1, LOG_MAP_INITIAL_MESH_SIZE))
+    v_guess_mesh = np.tile(
+        np.reshape(q - p, (len(q), 1)), (1, LOG_MAP_INITIAL_MESH_SIZE)
+    )
     y_guess_mesh = np.concat((p_guess_mesh, v_guess_mesh), axis=0)
 
     n = p.shape[0]
@@ -92,14 +100,16 @@ def bvp_log_map(p: torch.Tensor, q: torch.Tensor, conn: Connection, alpha: float
         lambda ya, yb: _geod_bc_fn(ya, yb, p_numpy, q_numpy, n),
         t_initial_mesh,
         y_guess_mesh,
-        tol=LOG_MAP_BVP_TOL,
-        max_nodes=LOG_MAP_BVP_MAX_NODES
+        tol=tol,
+        max_nodes=max_nodes,
     )
 
     if result.success:
         v = result.y[n:, 0]
     else:
-        print(f"failed to find solution to bvp log map, falling back to eulidean estimate")
+        print(
+            f"failed to find solution to bvp log map, falling back to eulidean estimate"
+        )
         v = q_numpy - p_numpy
     return torch.tensor(v, dtype=p.dtype)
 
@@ -182,7 +192,9 @@ class ExpMethod(Enum):
     APPROX_O2 = ApproxExpMapWrapper(approx_exp_map_o2)
     APPROX_O3 = ApproxExpMapWrapper(approx_exp_map_o3)
 
-    def __call__(self, p: torch.Tensor, v: torch.Tensor, conn: Connection, alpha: float = 1.0):
+    def __call__(
+        self, p: torch.Tensor, v: torch.Tensor, conn: Connection, alpha: float = 1.0
+    ):
         return self.value(p, v, conn, alpha)
 
 
@@ -193,8 +205,11 @@ class LogMethod(Enum):
     APPROX_O2 = ApproxLogMapWrapper(approx_log_map_o2)
     APPROX_O3 = ApproxLogMapWrapper(approx_log_map_o3)
 
-    def __call__(self, p: torch.Tensor, q: torch.Tensor, conn: Connection, alpha: float = 1.0):
+    def __call__(
+        self, p: torch.Tensor, q: torch.Tensor, conn: Connection, alpha: float = 1.0
+    ):
         return self.value(p, q, conn, alpha)
+
 
 # usable maps
 

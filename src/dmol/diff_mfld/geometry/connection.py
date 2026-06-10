@@ -20,6 +20,7 @@ class Connection(ABC):
 
     @abstractmethod
     def _eval(self, p) -> torch.Tensor:
+        # evaluates connection coefficients with upper index first
         pass
 
     def __call__(self, *coords_sets) -> torch.Tensor:

@@ -2,10 +2,10 @@ import torch
 from dataclasses import dataclass
 from typing import Optional
 
-from diff_mfld.geometry.metric import MetricField
-from diff_mfld.geometry.connection import Connection
+from dmol.diff_mfld.geometry.metric import MetricField
+from dmol.diff_mfld.geometry.connection import Connection
 
-from diff_mfld.geodesic.geodesic_funcs import (
+from dmol.diff_mfld.geodesic.geodesic_funcs import (
     ExpMethod,
     LogMethod,
 )

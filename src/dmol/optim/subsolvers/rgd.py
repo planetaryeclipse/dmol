@@ -2,11 +2,11 @@ import torch
 
 from dataclasses import dataclass
 
-from diff_mfld.geometry.funcs import MfldFunc, FuncArgs
-from diff_mfld.mfld import ComputeMfld
-from optim.results import SubsolverCfg, SubsolverCriterion
+from dmol.diff_mfld.geometry.funcs import MfldFunc, FuncArgs
+from dmol.diff_mfld.mfld import ComputeMfld
+from dmol.optim.results import SubsolverCfg, SubsolverCriterion
 
-from optim.results import CustomSubsolverResult, SubsolverHistory, SubsolverResult
+from dmol.optim.results import CustomSubsolverResult, SubsolverHistory, SubsolverResult
 
 
 @dataclass
@@ -39,13 +39,21 @@ class RiemGradDescentResult(CustomSubsolverResult):
             history=SubsolverHistory(
                 p_hist=self.history.p_hist,
                 f_hist=self.history.f_hist,
-            )
+            ),
         )
 
 
-def riem_grad_descent(f: MfldFunc, p0: torch.Tensor, mfld: ComputeMfld, cfg: RiemGradDescentCfg, *args: *FuncArgs):
+def riem_grad_descent(
+    f: MfldFunc,
+    p0: torch.Tensor,
+    mfld: ComputeMfld,
+    cfg: RiemGradDescentCfg,
+    *args: *FuncArgs,
+):
     p_prev = None  # track this value to utilize convergence criterions
-    p: torch.Tensor = p0.detach().clone()  # cloned so can be modified without changing p_prev (when assigned)
+    p: torch.Tensor = (
+        p0.detach().clone()
+    )  # cloned so can be modified without changing p_prev (when assigned)
 
     p_hist = []
     f_hist = []
@@ -75,7 +83,8 @@ def riem_grad_descent(f: MfldFunc, p0: torch.Tensor, mfld: ComputeMfld, cfg: Rie
                         history=RiemGradDescentHistory(
                             p_hist=torch.stack(p_hist),
                             f_hist=torch.tensor(f_hist),
-                        ))
+                        ),
+                    )
             elif cfg.criterion_mode == SubsolverCriterion.NORM:
                 # computes the norm of the gradient of the function
                 f_diff = f.diff(p, mfld, *args)
@@ -92,7 +101,8 @@ def riem_grad_descent(f: MfldFunc, p0: torch.Tensor, mfld: ComputeMfld, cfg: Rie
                         history=RiemGradDescentHistory(
                             p_hist=torch.stack(p_hist),
                             f_hist=torch.tensor(f_hist),
-                        ))
+                        ),
+                    )
 
         p_prev = p.clone()  # otherwise if we modify p then p_prev is changed
     return RiemGradDescentResult(
@@ -102,4 +112,5 @@ def riem_grad_descent(f: MfldFunc, p0: torch.Tensor, mfld: ComputeMfld, cfg: Rie
         history=RiemGradDescentHistory(
             p_hist=torch.stack(p_hist),
             f_hist=torch.tensor(f_hist),
-        ))
+        ),
+    )

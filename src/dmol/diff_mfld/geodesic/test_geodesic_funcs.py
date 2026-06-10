@@ -3,10 +3,10 @@ import torch
 import pytest
 from pytest import approx
 
-from diff_mfld.geodesic.geodesic_funcs import (
+from dmol.diff_mfld.geodesic.geodesic_funcs import (
     ExpMethod, LogMethod
 )
-from diff_mfld.geometry.metric import RnMetricField, MetricField
+from dmol.diff_mfld.geometry.metric import RnMetricField, MetricField
 
 
 @pytest.mark.parametrize("notebooks", [

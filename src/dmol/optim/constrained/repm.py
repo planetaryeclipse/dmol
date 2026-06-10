@@ -5,27 +5,29 @@ from typing import List
 
 import torch
 
-from diff_mfld.geometry.funcs import MfldFunc, FuncArgs
-from diff_mfld.mfld import ComputeMfld
-from optim.results import SubsolverCfg, SubsolverCriterion, ConstrSolverCfg
-from optim.subsolver_methods import SubsolverMethod
-from optim.subsolvers.rgd import RiemGradDescentCfg
-
+from dmol.diff_mfld.geometry.funcs import MfldFunc, FuncArgs
+from dmol.diff_mfld.mfld import ComputeMfld
+from dmol.optim.results import SubsolverCfg, SubsolverCriterion, ConstrSolverCfg
+from dmol.optim.subsolver_methods import SubsolverMethod
+from dmol.optim.subsolvers.rgd import RiemGradDescentCfg
 
 # implements the Riemannian Exact Penalty Method via Smoothing (REPMS) described in "Simple Algorithms for Optimization
 # on Riemannian Manifolds with Constraints"
+
 
 class PseudoHuberLoss(MfldFunc):
     def __init__(self, f: MfldFunc, u: float):
         self._f = f
         self._u = u
 
-    def value(self, p: torch.Tensor, cfg: ComputeMfld, *args: *FuncArgs) -> torch.Tensor:
+    def value(
+        self, p: torch.Tensor, cfg: ComputeMfld, *args: *FuncArgs
+    ) -> torch.Tensor:
         f_val = self._f.value(p, cfg, *args)
         if f_val <= 0.0:
             return torch.tensor(0.0)
         elif f_val <= self._u:
-            return f_val ** 2 / (2.0 * self._u)
+            return f_val**2 / (2.0 * self._u)
         else:
             return f_val - self._u / 2.0
 
@@ -44,7 +46,9 @@ class PseudoHuberLoss(MfldFunc):
             return torch.tensor(0.0)
         elif f_val <= self._u:
             f_diff = self._f.diff(p, cfg, *args)
-            return 1.0 / self._u * torch.outer(f_diff, f_diff) + 1.0 / self._u * self._f.hess(p, cfg, *args)
+            return 1.0 / self._u * torch.outer(
+                f_diff, f_diff
+            ) + 1.0 / self._u * self._f.hess(p, cfg, *args)
         else:
             return self._f.hess(p, cfg, *args)
 
@@ -58,20 +62,39 @@ class PseudoHuberLoss(MfldFunc):
 
 
 class SubproblemLSE(MfldFunc):
-    def __init__(self, f: MfldFunc, gs: List[MfldFunc], hs: List[MfldFunc], u: float, penalty: float):
+    def __init__(
+        self,
+        f: MfldFunc,
+        gs: List[MfldFunc],
+        hs: List[MfldFunc],
+        u: float,
+        penalty: float,
+    ):
         self._f = f
         self._gs = gs
         self._hs = hs
         self._u = u
         self._penalty = penalty
 
-    def value(self, p: torch.Tensor, cfg: ComputeMfld, *args: *FuncArgs) -> torch.Tensor:
+    def value(
+        self, p: torch.Tensor, cfg: ComputeMfld, *args: *FuncArgs
+    ) -> torch.Tensor:
         result = self._f.value(p, cfg, *args)
         for g in self._gs:
-            result += self._penalty * self._u * torch.log(1.0 + torch.exp(g.value(p, cfg, *args) / self._u))
+            result += (
+                self._penalty
+                * self._u
+                * torch.log(1.0 + torch.exp(g.value(p, cfg, *args) / self._u))
+            )
         for h in self._hs:
-            result += self._penalty * self._u * torch.log(
-                torch.exp(h.value(p, cfg, *args) / self._u) + torch.exp(-h.value(p, cfg, *args) / self._u))
+            result += (
+                self._penalty
+                * self._u
+                * torch.log(
+                    torch.exp(h.value(p, cfg, *args) / self._u)
+                    + torch.exp(-h.value(p, cfg, *args) / self._u)
+                )
+            )
         return result
 
     def diff(self, p: torch.Tensor, cfg: ComputeMfld, *args: *FuncArgs) -> torch.Tensor:
@@ -103,8 +126,21 @@ class SubproblemLSE(MfldFunc):
             exp_g = torch.exp(g.value(p, cfg, *args) / self._u)
             diff_g = g.diff(p, cfg, *args)
 
-            result += self._penalty * exp_g / self._u / (1 + exp_g) * torch.outer(diff_g, diff_g)
-            result += -self._penalty * exp_g / (1 + exp_g) ** 2 * exp_g / self._u * torch.outer(diff_g, diff_g)
+            result += (
+                self._penalty
+                * exp_g
+                / self._u
+                / (1 + exp_g)
+                * torch.outer(diff_g, diff_g)
+            )
+            result += (
+                -self._penalty
+                * exp_g
+                / (1 + exp_g) ** 2
+                * exp_g
+                / self._u
+                * torch.outer(diff_g, diff_g)
+            )
             result += self._penalty * exp_g / (1 + exp_g) * g.hess(p, cfg, *args)
         for h in self._hs:
             exp_pos_h = torch.exp(h.value(p, cfg, *args) / self._u)
@@ -112,20 +148,61 @@ class SubproblemLSE(MfldFunc):
             diff_h = h.diff(p, cfg, *args)
             hess_h = h.hess(p, cfg, *args)
 
-            result += self._penalty * exp_pos_h / self._u * exp_pos_h * torch.outer(diff_h, diff_h)
-            result += -self._penalty * exp_neg_h / self._u * exp_pos_h * torch.outer(diff_h, diff_h)
-            result += (exp_pos_h + exp_neg_h) * exp_pos_h / self._u * torch.outer(diff_h, diff_h)
+            result += (
+                self._penalty
+                * exp_pos_h
+                / self._u
+                * exp_pos_h
+                * torch.outer(diff_h, diff_h)
+            )
+            result += (
+                -self._penalty
+                * exp_neg_h
+                / self._u
+                * exp_pos_h
+                * torch.outer(diff_h, diff_h)
+            )
+            result += (
+                (exp_pos_h + exp_neg_h)
+                * exp_pos_h
+                / self._u
+                * torch.outer(diff_h, diff_h)
+            )
             result += (exp_pos_h + exp_neg_h) * exp_pos_h * hess_h
 
-            result += -self._penalty * exp_pos_h / self._u * exp_neg_h * torch.outer(diff_h, diff_h)
-            result += +self._penalty * exp_neg_h / self._u * exp_neg_h * torch.outer(diff_h, diff_h)
-            result += -(exp_pos_h + exp_neg_h) * exp_neg_h / self._u * torch.outer(diff_h, diff_h)
+            result += (
+                -self._penalty
+                * exp_pos_h
+                / self._u
+                * exp_neg_h
+                * torch.outer(diff_h, diff_h)
+            )
+            result += (
+                +self._penalty
+                * exp_neg_h
+                / self._u
+                * exp_neg_h
+                * torch.outer(diff_h, diff_h)
+            )
+            result += (
+                -(exp_pos_h + exp_neg_h)
+                * exp_neg_h
+                / self._u
+                * torch.outer(diff_h, diff_h)
+            )
             result += -(exp_pos_h + exp_neg_h) * exp_neg_h * hess_h
         return result
 
 
 class SubproblemLQH(MfldFunc):
-    def __init__(self, f: MfldFunc, gs: List[MfldFunc], hs: List[MfldFunc], u: float, penalty: float):
+    def __init__(
+        self,
+        f: MfldFunc,
+        gs: List[MfldFunc],
+        hs: List[MfldFunc],
+        u: float,
+        penalty: float,
+    ):
         self._f = f
         self._gs = gs
         self._hs = hs
@@ -134,13 +211,17 @@ class SubproblemLQH(MfldFunc):
 
         self._gs_pseudo_losses = [PseudoHuberLoss(g, u) for g in gs]
 
-    def value(self, p: torch.Tensor, cfg: ComputeMfld, *args: *FuncArgs) -> torch.Tensor:
+    def value(
+        self, p: torch.Tensor, cfg: ComputeMfld, *args: *FuncArgs
+    ) -> torch.Tensor:
         result = self._f.value(p, cfg, *args)
         for g_loss in self._gs_pseudo_losses:
             g_loss.u = self._u
             result += self._penalty * g_loss.value(p, cfg, *args)
         for h in self._hs:
-            result += self._penalty * torch.sqrt(h.value(p, cfg, *args) ** 2 + self._u ** 2)
+            result += self._penalty * torch.sqrt(
+                h.value(p, cfg, *args) ** 2 + self._u**2
+            )
         return result
 
     def diff(self, p: torch.Tensor, cfg: ComputeMfld, *args: *FuncArgs) -> torch.Tensor:
@@ -150,7 +231,12 @@ class SubproblemLQH(MfldFunc):
             result += self._penalty * g_loss.diff(p, cfg, *args)
         for h in self._hs:
             h_val = h.value(p, cfg, *args)
-            result += self._penalty / torch.sqrt(h_val ** 2 + self._u ** 2) * h_val * h.diff(p, cfg, *args)
+            result += (
+                self._penalty
+                / torch.sqrt(h_val**2 + self._u**2)
+                * h_val
+                * h.diff(p, cfg, *args)
+            )
         return result
 
     def hess(self, p: torch.Tensor, cfg: ComputeMfld, *args: *FuncArgs) -> torch.Tensor:
@@ -162,10 +248,16 @@ class SubproblemLQH(MfldFunc):
             h_val = h.value(p, cfg, *args)
             h_diff = h.diff(p, cfg, *args)
 
-            result += -self._penalty / torch.float_power(h_val ** 2 + self._u ** 2, 1.5 / 2) * h_val ** 2 * torch.outer(
-                h_diff, h_diff)
-            result += self._penalty / (h_val ** 2 + self._u ** 2) * torch.outer(h_diff, h_diff)
-            result += self._penalty / (h_val ** 2 + self._u ** 2) * h.hess(p, cfg, *args)
+            result += (
+                -self._penalty
+                / torch.float_power(h_val**2 + self._u**2, 1.5 / 2)
+                * h_val**2
+                * torch.outer(h_diff, h_diff)
+            )
+            result += (
+                self._penalty / (h_val**2 + self._u**2) * torch.outer(h_diff, h_diff)
+            )
+            result += self._penalty / (h_val**2 + self._u**2) * h.hess(p, cfg, *args)
         return result
 
     @property
@@ -214,7 +306,9 @@ class RepmCfg(ConstrSolverCfg):
     penalty_0: float = 0.5  # rho
     penalty_growth: float = 1.1  # > 1
     penalty_update: bool = True  # whether to update the penalty
-    penalty_constr_threshold: float = 1e-6  # update if contraint violates this threshold
+    penalty_constr_threshold: float = (
+        1e-6  # update if contraint violates this threshold
+    )
 
     approx_acc_min: float = 1e-3
     approx_acc_0: float = 1e-2  # u
@@ -239,13 +333,15 @@ class RepmResult:
     history: RepmHistory
 
 
-def repm(f: MfldFunc,
-         gs: List[MfldFunc],
-         hs: List[MfldFunc],
-         p0: torch.Tensor,
-         mfld: ComputeMfld,
-         cfg: RepmCfg,
-         *args: *FuncArgs) -> RepmResult:
+def repm(
+    f: MfldFunc,
+    gs: List[MfldFunc],
+    hs: List[MfldFunc],
+    p0: torch.Tensor,
+    mfld: ComputeMfld,
+    cfg: RepmCfg,
+    *args: *FuncArgs,
+) -> RepmResult:
     p = p0.clone()
     subsolver_cfg = copy.copy(cfg.subsolver_cfg)  # we will update this over time
 
@@ -283,22 +379,36 @@ def repm(f: MfldFunc,
         q_subproblem.penalty = penalty
 
         # attempts to solve the subproblem
-        subsolver_result = cfg.subsolver_method(q_subproblem, p, mfld, subsolver_cfg, *args)
+        subsolver_result = cfg.subsolver_method(
+            q_subproblem, p, mfld, subsolver_cfg, *args
+        )
         if not subsolver_result.success:
             return RepmResult(
                 success=False,
                 p=subsolver_result.p,
                 iters=idx + 1,
                 history=RepmHistory(
-                    p_hist=torch.stack(p_hist) if len(p_hist) > 0 else torch.zeros((0, len(p))),
+                    p_hist=(
+                        torch.stack(p_hist)
+                        if len(p_hist) > 0
+                        else torch.zeros((0, len(p)))
+                    ),
                     f_hist=torch.tensor(f_hist),
-                    gs_hist=torch.stack(gs_hist) if len(gs_hist) > 0 else torch.zeros((0, len(gs))),
-                    hs_hist=torch.stack(hs_hist) if len(hs_hist) > 0 else torch.zeros((0, len(hs))),
+                    gs_hist=(
+                        torch.stack(gs_hist)
+                        if len(gs_hist) > 0
+                        else torch.zeros((0, len(gs)))
+                    ),
+                    hs_hist=(
+                        torch.stack(hs_hist)
+                        if len(hs_hist) > 0
+                        else torch.zeros((0, len(hs)))
+                    ),
                     acc_hist=torch.tensor(acc_hist),
                     penalty_hist=torch.tensor(penalty_hist),
                     approx_acc_hist=torch.tensor(approx_acc_hist),
                     subsolver_iters_hist=subsolver_iters_hist,
-                )
+                ),
             )
 
         # assume that the subsolver was succssful after this point
@@ -307,7 +417,11 @@ def repm(f: MfldFunc,
         # print(f"next_p: {next_p}")
 
         # check convergence criterion
-        if mfld.dist(p, next_p) < cfg.min_step and acc_tol <= cfg.acc_tol_min and approx_acc <= cfg.approx_acc_min:
+        if (
+            mfld.dist(p, next_p) < cfg.min_step
+            and acc_tol <= cfg.acc_tol_min
+            and approx_acc <= cfg.approx_acc_min
+        ):
             successfully_converged = True
 
         # convergence has not beeen achieved, proceed with updates
@@ -319,8 +433,10 @@ def repm(f: MfldFunc,
         next_h_vals = torch.tensor([h.value(next_p, mfld, *args) for h in hs])
 
         if cfg.penalty_update and (
-                idx == 0 or torch.max(next_g_vals.abs()) >= cfg.penalty_constr_threshold or torch.max(
-            next_h_vals.abs()) >= cfg.penalty_growth):
+            idx == 0
+            or torch.max(next_g_vals.abs()) >= cfg.penalty_constr_threshold
+            or torch.max(next_h_vals.abs()) >= cfg.penalty_growth
+        ):
             next_penalty = cfg.penalty_growth * penalty
         else:
             next_penalty = penalty  # no change in penalty
@@ -361,5 +477,5 @@ def repm(f: MfldFunc,
             penalty_hist=torch.tensor(penalty_hist),
             approx_acc_hist=torch.tensor(approx_acc_hist),
             subsolver_iters_hist=subsolver_iters_hist,
-        )
+        ),
     )
