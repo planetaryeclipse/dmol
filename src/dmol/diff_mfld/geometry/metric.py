@@ -70,9 +70,7 @@ class MetricField:
 
         return LeviCivitaConnection(
             self.n,
-            # torch.compile(
             lambda p: _eval_christoffels(self.n, g_mat_fn, p),
-            # ),
         )
 
     @property
