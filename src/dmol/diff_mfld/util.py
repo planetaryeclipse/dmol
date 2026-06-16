@@ -1,3 +1,4 @@
+import torch
 from abc import abstractmethod
 from typing import Dict
 
@@ -19,6 +20,7 @@ class PartialSpec(type):
         /,
         creating_derived=False,
         top_level_type=None,
+        no_spec_match=False,
         **kwds,
     ):
         # type is incomplete if any of the namespace objects are none or an object is also marked incomplete
@@ -43,6 +45,7 @@ class PartialSpec(type):
         obj._incomplete = incomplete
         obj._specification = namespace
         obj._top_level_type = type(obj) if top_level_type is None else top_level_type
+        obj._no_spec_match = no_spec_match
 
         return obj
 
@@ -61,7 +64,9 @@ class PartialSpec(type):
 
 
 def specs_match(ty: PartialSpec, other_ty: PartialSpec):
-    if ty._top_level_type is other_ty._top_level_type:
+    if ty is not other_ty and ty._no_spec_match:
+        return False
+    elif ty._top_level_type is other_ty._top_level_type:
         # match all the elements
         spec, other_spec = ty._specification, other_ty._specification
 

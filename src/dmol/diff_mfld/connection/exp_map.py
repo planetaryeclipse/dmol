@@ -10,9 +10,9 @@ from scipy.integrate import solve_ivp
 from dmol.diff_mfld.util import specs_match
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.connection.connection import BundleCurve
-from dmol.diff_mfld.geometry.vector_bundle import VectorBundle
-from dmol.diff_mfld.geometry.riemannian import EuclideanMetricField
-from dmol.diff_mfld.geometry.tensor import Vec
+from dmol.diff_mfld.bundle.vector_bundle import VectorBundle
+from dmol.diff_mfld.riemann import EuclideanMetricField
+from dmol.diff_mfld.bundle.tensor import Vec
 
 
 def _exp_map_ivp_fn(

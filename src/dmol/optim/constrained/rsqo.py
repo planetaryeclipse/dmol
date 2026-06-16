@@ -5,7 +5,7 @@ import torch
 import numpy as np
 from torch import hub
 
-from dmol.diff_mfld.geometry.funcs import MfldFunc, FuncArgs
+from dmol.diff_mfld.funcs import MfldFunc, FuncArgs
 from dmol.diff_mfld.mfld import ComputeMfld
 from dmol.optim.results import ConstrSolverCfg
 

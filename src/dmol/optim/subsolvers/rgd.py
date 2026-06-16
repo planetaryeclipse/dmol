@@ -2,7 +2,7 @@ import torch
 
 from dataclasses import dataclass
 
-from dmol.diff_mfld.geometry.funcs import MfldFunc, FuncArgs
+from dmol.diff_mfld.funcs import MfldFunc, FuncArgs
 from dmol.diff_mfld.mfld import ComputeMfld
 from dmol.optim.results import SubsolverCfg, SubsolverCriterion
 

@@ -4,7 +4,7 @@ from typing import Tuple
 
 from dmol.diff_mfld.util import classproperty, PartialSpec
 from dmol.diff_mfld.mfld import Manifold
-from dmol.diff_mfld.geometry.vector_bundle import (
+from dmol.diff_mfld.bundle.vector_bundle import (
     VectorBundle,
     TangentBundle,
     CotangentBundle,

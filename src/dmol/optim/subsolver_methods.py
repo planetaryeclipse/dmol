@@ -2,7 +2,7 @@ from enum import Enum
 
 import torch
 
-from dmol.diff_mfld.geometry.funcs import MfldFunc, FuncArgs
+from dmol.diff_mfld.funcs import MfldFunc, FuncArgs
 from dmol.diff_mfld.mfld import ComputeMfld
 from dmol.optim.results import SubsolverCfg
 from dmol.optim.subsolvers.rgd import riem_grad_descent, RiemGradDescentCfg

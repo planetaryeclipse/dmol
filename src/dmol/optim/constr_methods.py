@@ -4,7 +4,7 @@ import torch
 
 from enum import Enum
 
-from dmol.diff_mfld.geometry.funcs import MfldFunc, FuncArgs
+from dmol.diff_mfld.funcs import MfldFunc, FuncArgs
 from dmol.diff_mfld.mfld import ComputeMfld
 from dmol.optim.constrained.ralm import RalmCfg, ralm
 from dmol.optim.constrained.repm import RepmCfg, repm

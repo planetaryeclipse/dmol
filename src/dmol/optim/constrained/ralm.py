@@ -13,7 +13,7 @@ from dmol.optim.results import (
 )
 from dmol.optim.subsolver_methods import SubsolverMethod
 from dmol.optim.subsolvers.rgd import RiemGradDescentCfg
-from dmol.diff_mfld.geometry.funcs import MfldFunc, FuncArgs
+from dmol.diff_mfld.funcs import MfldFunc, FuncArgs
 from dmol.diff_mfld.mfld import ComputeMfld
 
 # implements the Riemannian Augmented Lagrangian Method (RALM) described in "Simple Algorithms for Optimization on

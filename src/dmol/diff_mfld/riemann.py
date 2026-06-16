@@ -3,9 +3,9 @@ import torch
 from typing import Union, Self
 
 from dmol.diff_mfld.mfld import Manifold, Point
-from dmol.diff_mfld.geometry.tensor import Tensor, Cov, Vec, check_tensor_type
-from dmol.diff_mfld.geometry.vector_bundle import TensorBundle, TangentBundle
-from dmol.diff_mfld.geometry.field import Field
+from dmol.diff_mfld.bundle.tensor import Tensor, Cov, Vec, check_tensor_type
+from dmol.diff_mfld.bundle.vector_bundle import TensorBundle, TangentBundle
+from dmol.diff_mfld.bundle.field import Field
 from dmol.diff_mfld.connection.connection import Connection
 
 

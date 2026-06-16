@@ -1,40 +1,4 @@
-# import torch
-# from dataclasses import dataclass
-# from typing import Optional
 
-# from dmol.diff_mfld.geometry.riemannian import MetricField
-# from dmol.diff_mfld.connection.connection import Connection
-
-# from dmol.diff_mfld.connection.geodesic_funcs import (
-#     ExpMethod,
-#     LogMethod,
-# )
-
-
-# @dataclass
-# class Mfld:
-#     metric: Optional[MetricField]
-#     conn: Connection
-
-
-# @dataclass
-# class ComputeMfld:
-#     mfld: Mfld
-
-#     exp_method: ExpMethod = ExpMethod.APPROX_O2
-#     log_method: LogMethod = LogMethod.APPROX_O2
-#     dist_method: LogMethod = LogMethod.APPROX_O2
-
-#     def exp(self, p: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-#         return self.exp_method(p, v, self.mfld.conn)
-
-#     def log(self, p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
-#         return self.log_method(p, q, self.mfld.conn)
-
-#     def dist(self, p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
-#         v = self.log_method(p, q, self.mfld.conn)
-#         metric = self.mfld.metric(p)
-#         return metric(v, v)
 
 
 import torch
@@ -48,14 +12,26 @@ class Manifold(metaclass=PartialSpec):
     _dim: int = None
 
     def __class_getitem__(cls, args):
-        dim: int
-        dim = args
+        dim: int = args
+        if type(dim) is not int:
+            raise TypeError()
+        elif dim < 0:
+            raise TypeError()
 
         return PartialSpec(
-            f"Manifold[{dim}]", (cls,), {"_dim": dim}, creating_derived=True
+            f"Manifold[{dim}]",
+            (cls,),
+            {"_dim": dim, "__class_getitem__": Manifold._exhausted},
+            creating_derived=True,
+            no_spec_match=True,
         )
 
+    def _exhausted(cls, args):
+        raise TypeError("no further type specialization")
+
     def __init__(self, name: str):
+        if type(name) is not str or name == "":
+            raise ValueError()
         self._name = name
 
     @classproperty
@@ -70,8 +46,12 @@ class Manifold(metaclass=PartialSpec):
 class Point(metaclass=PartialSpec):
     _manifold: type[Manifold]
 
-    def __class_getitem__(cls, manifold: type[Manifold]):
-        if manifold.incomplete:
+    def __class_getitem__(cls, args):
+        manifold: type[Manifold] = args
+
+        if not issubclass(manifold, Manifold):
+            raise TypeError()
+        elif manifold.incomplete:
             raise TypeError("manifold type must be fully specialized")
 
         return PartialSpec(
@@ -84,6 +64,7 @@ class Point(metaclass=PartialSpec):
     def __init__(self, p: Union[Point, torch.Tensor]):
         if isinstance(p, Point):
             if specs_match(self._manifold, p.manifold):
+                print(f"specs match")
                 self._p = p.p
             else:
                 raise ValueError(
@@ -98,6 +79,10 @@ class Point(metaclass=PartialSpec):
 
     def __get__(self, instance, owner):
         return self._p
+
+    def __eq__(self, value):
+        if specs_match(self, value):
+            return torch.equal(self._p, value.p)
 
     @property
     def p(self):

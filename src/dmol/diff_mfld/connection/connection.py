@@ -8,10 +8,10 @@ from typing import Tuple, Union, Self, Optional, Protocol
 
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.util import PartialSpec, classproperty
-from dmol.diff_mfld.geometry.tensor import Tensor, Vec
+from dmol.diff_mfld.bundle.tensor import Tensor, Vec
 
 # from dmol.diff_mfld.geometry.field import Field, VectorField
-from dmol.diff_mfld.geometry.vector_bundle import VectorBundle, TensorProductBundle
+from dmol.diff_mfld.bundle.vector_bundle import VectorBundle, TensorProductBundle
 
 
 class BundleCurve:

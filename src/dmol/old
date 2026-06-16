@@ -140,10 +140,6 @@
 # T_VectorBundleRank = TypeVar("T_VectorBundleRank", int)
 
 
-
-
-
-
 # class SpecState(Enum):
 #     Incomplete = auto()
 #     Partial = auto()
@@ -151,7 +147,6 @@
 
 #     def incomplete(self):
 #         return self == self.Incomplete
-
 
 
 # class DelayedSpec(type):
@@ -193,18 +188,9 @@
 #         return self._value
 
 
-
-
-
-
-
 # def check_base_manifold_complete(base: type[Manifold]):
 #     if not issubclass(base, VectorBundle) and base.incomplete:
 #         raise TypeError("base manifold type not fully specified")
-
-
-
-
 
 
 # class VectorBundle(Manifold):
@@ -299,8 +285,6 @@
 #                 "_manifold_type": manifold,
 #             },
 #         }
-
-
 
 
 # class DualBundle(VectorBundle):
@@ -537,3 +521,42 @@
 # class RnMetricField(MetricField):
 #     def __init__(self, n):
 #         super().__init__(lambda *_: torch.eye(n), n=n)
+
+
+# import torch
+# from dataclasses import dataclass
+# from typing import Optional
+
+# from dmol.diff_mfld.geometry.riemannian import MetricField
+# from dmol.diff_mfld.connection.connection import Connection
+
+# from dmol.diff_mfld.connection.geodesic_funcs import (
+#     ExpMethod,
+#     LogMethod,
+# )
+
+
+# @dataclass
+# class Mfld:
+#     metric: Optional[MetricField]
+#     conn: Connection
+
+
+# @dataclass
+# class ComputeMfld:
+#     mfld: Mfld
+
+#     exp_method: ExpMethod = ExpMethod.APPROX_O2
+#     log_method: LogMethod = LogMethod.APPROX_O2
+#     dist_method: LogMethod = LogMethod.APPROX_O2
+
+#     def exp(self, p: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+#         return self.exp_method(p, v, self.mfld.conn)
+
+#     def log(self, p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
+#         return self.log_method(p, q, self.mfld.conn)
+
+#     def dist(self, p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
+#         v = self.log_method(p, q, self.mfld.conn)
+#         metric = self.mfld.metric(p)
+#         return metric(v, v)

@@ -8,7 +8,7 @@ from multiprocessing.dummy import Pool  # threads
 
 from typing import List, Tuple, Any, Optional
 
-from dmol.diff_mfld.geometry.funcs import FuncArgs, MfldFunc
+from dmol.diff_mfld.funcs import FuncArgs, MfldFunc
 
 
 from dmol.optim.constrained import (

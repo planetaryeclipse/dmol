@@ -7,7 +7,7 @@ from scipy.optimize import root_scalar
 
 from dataclasses import dataclass, field
 
-from dmol.diff_mfld.geometry.funcs import MfldFunc, FuncArgs
+from dmol.diff_mfld.funcs import MfldFunc, FuncArgs
 from dmol.diff_mfld.mfld import ComputeMfld
 from dmol.optim.results import (
     SubsolverCfg,

@@ -6,14 +6,14 @@ from typing import Union, Self, override, Callable
 
 from dmol.diff_mfld.util import PartialSpec, classproperty, specs_match
 from dmol.diff_mfld.mfld import Manifold, Point
-from dmol.diff_mfld.geometry.vector_bundle import (
+from dmol.diff_mfld.bundle.vector_bundle import (
     ScalarBundle,
     VectorBundle,
     TangentBundle,
     CotangentBundle,
     TensorBundle,
 )
-from dmol.diff_mfld.geometry.tensor import Tensor
+from dmol.diff_mfld.bundle.tensor import Tensor
 from dmol.diff_mfld.connection.connection import Connection
 
 

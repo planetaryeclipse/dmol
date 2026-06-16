@@ -5,7 +5,7 @@ from typing import List
 
 import torch
 
-from dmol.diff_mfld.geometry.funcs import MfldFunc, FuncArgs
+from dmol.diff_mfld.funcs import MfldFunc, FuncArgs
 from dmol.diff_mfld.mfld import ComputeMfld
 from dmol.optim.results import SubsolverCfg, SubsolverCriterion, ConstrSolverCfg
 from dmol.optim.subsolver_methods import SubsolverMethod

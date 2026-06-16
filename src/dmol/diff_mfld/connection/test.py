@@ -1,7 +1,7 @@
 import torch
 
 from dmol.diff_mfld.connection.geodesic_funcs import ExpMethod, LogMethod
-from dmol.diff_mfld.geometry.riemannian import MetricField
+from dmol.diff_mfld.riemann import MetricField
 
 
 def noneuclidean_metric(x1, x2):

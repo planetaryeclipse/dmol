@@ -4,7 +4,7 @@ import numpy as np
 from enum import Enum
 from scipy.integrate import solve_ivp, solve_bvp
 
-from dmol.diff_mfld.geodesic.approx_geod import (
+from dmol.diff_mfld.connection.approx_geod import (
     approx_exp_map_o1,
     approx_exp_map_o2,
     approx_exp_map_o3,
@@ -14,7 +14,7 @@ from dmol.diff_mfld.geodesic.approx_geod import (
     ApproxExpMapWrapper,
     ApproxLogMapWrapper,
 )
-from dmol.diff_mfld.geometry.connection import Connection
+from dmol.diff_mfld.connection.connection import Connection
 
 LOG_MAP_INITIAL_MESH_SIZE = 10
 
