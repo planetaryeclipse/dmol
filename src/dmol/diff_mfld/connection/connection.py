@@ -4,11 +4,13 @@ from torch.func import jacrev
 from abc import ABC, abstractmethod
 
 from dataclasses import dataclass
-from typing import Tuple, Union, Self, Optional
+from typing import Tuple, Union, Self, Optional, Protocol
 
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.util import PartialSpec, classproperty
 from dmol.diff_mfld.geometry.tensor import Tensor, Vec
+
+# from dmol.diff_mfld.geometry.field import Field, VectorField
 from dmol.diff_mfld.geometry.vector_bundle import VectorBundle, TensorProductBundle
 
 
@@ -218,6 +220,14 @@ class Connection(metaclass=PartialSpec):
     ) -> Vec[Self._bundle]:
         # TODO: call the method in each handler
         pass
+
+    # # TODO: in the later Rust library ensure that the output type is determined based on FieldCovarDeriv
+
+    # def covar(field:  Field[Tensor[Self._bundle]] & FieldCovarDeriv, vf: VectorField) -> Field:
+    #     return field.covar(self, vf)
+
+    # def total_covar(field: FieldCovarDeriv) -> Field:
+    #     pass
 
 
 #  method(p, v, conn)

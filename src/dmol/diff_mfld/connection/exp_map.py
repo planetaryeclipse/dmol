@@ -62,6 +62,7 @@ def ivp_exp_map[T: VectorBundle](
     return (Point[p.manifold](p[-1, :]), BundleCurve[v.bundle](t, p, (v,)))
 
 
+
 # def _parallel_transp_ivp_fn(
 #     t,
 #     u: np.ndarray,

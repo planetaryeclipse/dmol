@@ -2,12 +2,19 @@ import torch
 from torch.func import jacrev
 
 from abc import abstractmethod
-from typing import Union, Self
+from typing import Union, Self, override, Callable
 
 from dmol.diff_mfld.util import PartialSpec, classproperty, specs_match
 from dmol.diff_mfld.mfld import Manifold, Point
-from dmol.diff_mfld.geometry.vector_bundle import VectorBundle
+from dmol.diff_mfld.geometry.vector_bundle import (
+    ScalarBundle,
+    VectorBundle,
+    TangentBundle,
+    CotangentBundle,
+    TensorBundle,
+)
 from dmol.diff_mfld.geometry.tensor import Tensor
+from dmol.diff_mfld.connection.connection import Connection
 
 
 class Field(metaclass=PartialSpec):
@@ -88,7 +95,7 @@ class Field(metaclass=PartialSpec):
         return cls._tensor
 
     @abstractmethod
-    def eval(self, p: torch.Tensor) -> Self._tensor:
+    def eval(self, p: torch.Tensor) -> Self.Tensor:
         pass
 
     @abstractmethod
@@ -96,6 +103,81 @@ class Field(metaclass=PartialSpec):
         # NOTE: default behavior assumes that the eval mapping is continuous, must override if discrete or approximate
         partials = jacrev(self.eval)(p)
         return partials
+
+
+class LambdaField(Field):
+    def __init__(self, field_fn: Callable[[torch.Tensor], torch.Tensor]):
+        super().__init__()
+        self._field_fn = field_fn
+
+    @override
+    def eval(self, p: torch.Tensor):
+        return self._field_fn(p)
+
+    pass
+
+
+class FieldCovarDeriv(Field):
+    _covar_bundle_type: type[VectorBundle]
+
+    @abstractmethod
+    def covar(
+        self,
+        conn: Connection[Self._tensor.bundle],
+        vf: VectorField[Self._field_bundle_type.base],
+    ) -> Field[Tensor[Self._field_bundle_type]]:
+        pass
+
+    @abstractmethod
+    def total_covar(
+        self,
+        conn: Connection[Self._tensor.bundle],
+    ) -> Field[Tensor[Self._covar_bundle_type]]:
+        pass
+
+
+# specially-named fields for better clarity
+
+
+class VectorField(Tensor[TangentBundle], FieldCovarDeriv):
+    # TODO: implement action of vector fields on each other
+    pass
+
+
+class CovectorField(Tensor[CotangentBundle], FieldCovarDeriv):
+    _field_bundle_type = Field[Tensor[TensorBundle[0, 2]]]
+
+    @override
+    def covar(self, conn, vf):
+        raise NotImplementedError()
+
+    @override
+    def total_covar(self, conn):
+        def _eval(p: torch.Tensor):
+            comps = self.eval(p)
+            partials = self.eval_partials(p)
+            conn_coeffs = conn.coeffs(p)
+
+            # in Lee the indices of partials is swapped but given the partials evaluation this places the index of
+            # differentiation in the latter index so no operation needed here
+            covar_comps = partials - torch.einsum("k,kji->ij", comps, conn_coeffs)
+            return covar_comps
+
+        return LambdaField[self._field_bundle_type](_eval)
+
+
+class ScalarField(Tensor[ScalarBundle], FieldCovarDeriv):
+    _field_bundle_type = CotangentBundle
+
+    @override
+    def covar(self, conn, vf):
+        # action of verctor field on scalar field
+        raise NotImplementedError()
+
+    @override
+    def total_covar(self, conn):
+        covec_comps = lambda p: self.eval_partials(p)
+        return LambdaField[Tensor[CotangentBundle]](covec_comps)
 
 
 print()

@@ -68,7 +68,7 @@ class VectorBundle(Manifold, BundleIndices):
 
         return PartialSpec(
             f"VectorBundle[{cls._rank}, {base.__name__}]",
-            (VectorBundle,),  # prevent generating chain of random unspecialized classes
+            (cls,),  # prevent generating chain of random unspecialized classes
             namespace,
             creating_derived=True,
             top_level_type=cls._top_level_type,
@@ -87,7 +87,7 @@ class VectorBundle(Manifold, BundleIndices):
 
         return PartialSpec(
             f"VectorBundle[{cls._rank}, {upd_base.__name__}]",
-            (VectorBundle,),
+            (cls,),
             namespace,
             creating_derived=True,
             top_level_type=cls._top_level_type,
@@ -124,6 +124,9 @@ class DualBundle(VectorBundle):
     def __class_getitem__(cls, args):
         orig: type[VectorBundle] = args
 
+        if orig.rank == 0:
+            raise TypeError("no dual exists for a vector bundle of rank 0")
+
         namespace = {
             "_dim": orig.dim,
             "_rank": orig.rank,
@@ -156,6 +159,45 @@ class DualBundle(VectorBundle):
         return PartialSpec(
             f"DualBundle[{upd_orig}]",
             (DualBundle,),
+            namespace,
+            creating_derived=True,
+            top_level_type=cls._top_level_type,
+        )
+
+
+class ScalarBundle(VectorBundle[0]):
+    @classmethod
+    def __class_getitem__(cls, args):
+        base: type[Manifold] = args
+        namespace = {"_dim": 0, "_rank": 0, "_base": base}
+
+        if issubclass(base, VectorBundle):
+            if base.incomplete:
+                namespace.update(
+                    {"__class_getitem__": ScalarBundle._partial_spec_mfld_pass_to_base}
+                )
+
+        return PartialSpec(
+            f"ScalarBundle[{base.__name__}]",
+            (cls,),
+            namespace,
+            creating_derived=True,
+        )
+
+    def _partial_spec_mfld_pass_to_base(cls, args):
+        underlying_base: type[Manifold] = args
+
+        upd_base = cls._base[underlying_base]
+        namespace = {"_dim": 0, "_rank": 0, "_base": upd_base}
+        if isinstance(upd_base, VectorBundle):
+            if upd_base.incomplete:
+                namespace.update(
+                    {"__class_getitem__": ScalarBundle._partial_spec_mfld_pass_to_base}
+                )
+
+        return PartialSpec(
+            f"ScalarBundle[{upd_base.__name__}]",
+            (cls,),
             namespace,
             creating_derived=True,
             top_level_type=cls._top_level_type,
