@@ -1,0 +1,139 @@
+M = Manifold
+# print(M.incomplete)
+# M1 = Manifold[3]
+# print(M1.incomplete)
+
+# class VectorBundle(Manifold):
+#     rank: Delayed[int]
+#     base: Delayed[type[Manifold]]
+
+#     def gen_spec_type(cls, rank: Optional[int])
+
+#     pass
+
+# class TangentBundle(VectorBundle):
+
+#     def gen_spec_type(cls, base: type[Manifold]):
+#         pass
+
+#     pass
+
+# M = Manifold[2];
+
+# E = VectorBundle[4][M]
+# E2 = VectorBundle[4, M]
+
+# VecM = TangentBundle[M];
+# CovM = CovectorBundle[M];
+
+# TensM = TensorBundle[0, 1][M]
+# TensM = TensorBundle[0, 1, M]
+
+# MetricM = RiemannMetric[M]
+
+# class DualBundle[TangentBundle]:
+#     pass
+
+# CovectorBundle = DualBundle[TangentBundle]
+
+# class RiemannMetric(TensorBundle[0,1]):
+#     pass
+
+
+
+
+
+
+
+
+# VB = VectorBundle[2][M]
+M1 = Manifold[4]
+print(f"manifold incomplete: {M1.incomplete}")
+
+VB1 = VectorBundle[2][M1]
+
+print(f"VB1 incomplete: {VB1.incomplete}")
+print(f"VB1 dim: {VB1.dim}")
+print(f"VB1 rank: {VB1.rank}")
+print(f"VB1 base: {VB1.base}")
+
+# TM = TangentBundle[M1]
+
+# print(f"TM incomplete: {TM.incomplete}")
+# print(f"TM dim: {TM.dim}")
+# print(f"TM rank: {TM.rank}")
+# print(f"TM base: {TM.base}")
+
+TT = TangentBundle[TangentBundle]
+print(TT)
+
+TTM = TT[M1]
+print(TTM)
+
+a = TTM()
+# b = TT()
+
+
+
+
+
+M2 = Manifold[3]
+V1 = VectorBundle[3, M2]
+TM2 = TangentBundle[M2]
+
+V1_TM2 = TensorProductBundle[V1, TM2]
+
+print(V1_TM2)
+
+V = VectorBundle[4]
+V_T = TensorProductBundle[V, TangentBundle]
+
+print(V_T)
+print(f"V_T incomplete: {V_T.incomplete}")
+print(f"V_T dim: {V_T.dim}")
+
+V_T_M = V_T[M2]
+
+print(V_T_M)
+print(f"V_T_M incomplete: {V_T_M.incomplete}")
+
+
+
+
+
+
+
+
+K1 = KBundle[2, V][M2]
+
+print(K1)
+print(f"K1 incomplete: {K1.incomplete}")
+print(f"K1 dim: {K1.dim}")
+
+
+# exit()  # for now
+
+
+
+
+
+print()
+print()
+
+
+Tensor_02 = TensorBundle[0, 2]
+
+print(Tensor_02)
+print(f"Tensor_02 incomplete: {Tensor_02.incomplete}")
+
+Tensor_02_M = Tensor_02[M2]
+
+print(Tensor_02_M)
+print(f"Tensor_02_M incomplete: {Tensor_02_M.incomplete}")
+print(f"Tensor_02_M dim: {Tensor_02_M.dim}")
+print(f"Tensor_02_M rank: {Tensor_02_M.rank}")
+print(f"Tensor_02_M bundles: {Tensor_02_M.bundles}")
+print(f"Tensor_02_M bundle indices: {Tensor_02_M.bundle_indices}")
+
+
+MetricM2 = Metric[M2]
