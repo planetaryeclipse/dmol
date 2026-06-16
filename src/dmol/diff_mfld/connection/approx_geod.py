@@ -4,7 +4,7 @@ import torch
 import inspect
 
 from scipy.optimize import root
-from dmol.diff_mfld.geometry.connection import Connection
+from dmol.diff_mfld.connection.connection import Connection
 
 from typing import List, Callable
 

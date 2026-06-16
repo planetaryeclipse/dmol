@@ -1,7 +1,8 @@
 import torch
 
-from dmol.diff_mfld.geodesic.geodesic_funcs import ExpMethod, LogMethod
-from dmol.diff_mfld.geometry.metric import MetricField
+from dmol.diff_mfld.connection.geodesic_funcs import ExpMethod, LogMethod
+from dmol.diff_mfld.geometry.riemannian import MetricField
+
 
 def noneuclidean_metric(x1, x2):
     # elements are assigned to this metric to preserve gradient history
@@ -11,13 +12,14 @@ def noneuclidean_metric(x1, x2):
     # metric[2, 2] = 0.5 * x3**2
     return metric
 
+
 exp_method, log_method = ExpMethod.IVP, LogMethod.BVP
 
 metric_field = MetricField(noneuclidean_metric)
 conn = metric_field.christoffels()
 
-p = torch.tensor([1., 2.])
-q = torch.tensor([4., -3.])
+p = torch.tensor([1.0, 2.0])
+q = torch.tensor([4.0, -3.0])
 v_euclid = q - p  # result should not be this
 
 v_log = log_method(p, q, conn)
