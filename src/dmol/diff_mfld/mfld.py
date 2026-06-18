@@ -1,15 +1,20 @@
-
-
-
 import torch
 
 from typing import Union
 
-from dmol.diff_mfld.util import classproperty, PartialSpec, specs_match
+from dmol.diff_mfld.util import (
+    classproperty,
+    PartialSpec,
+    DerivedPartialSpec,
+    specs_match,
+    disable_matching,
+    specifications,
+)
 
 
+@disable_matching
 class Manifold(metaclass=PartialSpec):
-    _dim: int = None
+    _dim: int
 
     def __class_getitem__(cls, args):
         dim: int = args
@@ -18,16 +23,11 @@ class Manifold(metaclass=PartialSpec):
         elif dim < 0:
             raise TypeError()
 
-        return PartialSpec(
+        return DerivedPartialSpec(
             f"Manifold[{dim}]",
             (cls,),
-            {"_dim": dim, "__class_getitem__": Manifold._exhausted},
-            creating_derived=True,
-            no_spec_match=True,
+            {"_dim": dim},
         )
-
-    def _exhausted(cls, args):
-        raise TypeError("no further type specialization")
 
     def __init__(self, name: str):
         if type(name) is not str or name == "":
@@ -54,11 +54,10 @@ class Point(metaclass=PartialSpec):
         elif manifold.incomplete:
             raise TypeError("manifold type must be fully specialized")
 
-        return PartialSpec(
+        return DerivedPartialSpec(
             f"Point[{manifold.__name__}]",
             (Point,),
             {"_manifold": manifold},
-            creating_derived=True,
         )
 
     def __init__(self, p: Union[Point, torch.Tensor]):

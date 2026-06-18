@@ -1,6 +1,9 @@
 import torch
+
+import inspect
+
 from abc import abstractmethod
-from typing import Dict
+from typing import Dict, Tuple, Optional, Set
 
 
 class classproperty:
@@ -11,6 +14,37 @@ class classproperty:
         return self.func(cls)
 
 
+def disable_matching(cls):
+    cls._enable_spec_match = False
+    return cls
+
+
+def _get_mro_annotations(cls: type) -> Set[str]:
+    all_annotations = set()
+    for base in inspect.getmro(cls):
+        for key in inspect.get_annotations(base).keys():
+            all_annotations.add(key)
+    return all_annotations
+
+
+def specifications(
+    cls=None,
+    *,
+    fields: Optional[Set[str]] = None,
+):
+    def decorate(cls: type):
+        all_annotations = _get_mro_annotations(cls)
+
+        if fields is not None:
+            if not fields.issubset(all_annotations):
+                raise TypeError(
+                    "full specifications must be found as annotations in class mro"
+                )
+            cls._specs = fields
+
+    return decorate if cls is None else decorate(cls)
+
+
 class PartialSpec(type):
     def __new__(
         mcls,
@@ -18,83 +52,107 @@ class PartialSpec(type):
         bases,
         namespace,
         /,
-        creating_derived=False,
-        top_level_type=None,
-        no_spec_match=False,
         **kwds,
     ):
-        # type is incomplete if any of the namespace objects are none or an object is also marked incomplete
-        incomplete = True
-        if creating_derived:
-            # print(f"namespace: {namespace}")
+        cls = super().__new__(mcls, name, bases, namespace, **kwds)
+        cls._incomplete = True
+        cls._min_complete = False
+        cls._top_level_type = cls
+        cls._enable_spec_match = True
 
-            name_incomplete = len([v for k, v in namespace.items() if v is None]) > 0
-            sub_partial_spec_names_incomplete = False
-            for _, v in namespace.items():
-                if isinstance(v, PartialSpec) and v._incomplete:
-                    sub_partial_spec_names_incomplete = True
+        # default is that specs are all the annotations in mro
+        all_annotations = _get_mro_annotations(cls)
+        cls._specs = all_annotations
 
-            # print(f"name_incomplete: {name_incomplete}")
-            # print(
-            #     f"sub_partial_spec_names_incomplete: {sub_partial_spec_names_incomplete}"
-            # )
+        # ensures that all attributes at least have a value
+        members = {key: value for key, value in inspect.getmembers(cls)}
+        for spec in cls._specs:
+            if spec not in members:
+                setattr(cls, spec, None)
 
-            incomplete = name_incomplete or sub_partial_spec_names_incomplete
-
-        obj = super().__new__(mcls, name, bases, namespace, **kwds)
-        obj._incomplete = incomplete
-        obj._specification = namespace
-        obj._top_level_type = type(obj) if top_level_type is None else top_level_type
-        obj._no_spec_match = no_spec_match
-
-        return obj
+        return cls
 
     def __call__(self, *args, **kwds):
-        # print(f"self: {self}")
-        # print(f"bundle: {self._bundle}")
-
         if self._incomplete:
             raise TypeError(f"type must be fully specified before instantiation")
         return super().__call__(*args, **kwds)
 
     @property
     def incomplete(self):
-        # incomplete property is added by the metaclass in instantiation above
         return self._incomplete
+
+    @property
+    def top_level(self):
+        return self._top_level_type
+
+
+class DerivedPartialSpec(PartialSpec):
+    def __new__(
+        mcls,
+        name,
+        bases,
+        namespace,
+        /,
+        **kwds,
+    ):
+        (base,) = bases
+
+        members = {key: value for key, value in inspect.getmembers(base)}
+        upd_full_specs = {
+            spec: (members[spec] if spec in members.keys() else None)
+            for spec in base._specs
+        }
+        for key, value in namespace.items():
+            if key in upd_full_specs:
+                upd_full_specs[key] = value
+
+        # checks whether the updated annotations are complete
+
+        specs_incomplete = False
+        for _, value in upd_full_specs.items():
+            if value is None or (isinstance(value, PartialSpec) and value.incomplete):
+                specs_incomplete = True
+                break
+
+        # creates the derived class
+
+        obj = super().__new__(mcls, name, bases, namespace, **kwds)
+
+        obj._incomplete = specs_incomplete
+        obj._top_level_type = base._top_level_type
+        obj._enable_spec_match = base._enable_spec_match
+
+        if not specs_incomplete:
+            obj.__class_getitem__ = DerivedPartialSpec._exhausted_specs
+
+        return obj
+
+    def _exhausted_specs(*args):
+        raise TypeError("no further type specialization")
 
 
 def specs_match(ty: PartialSpec, other_ty: PartialSpec):
-    if ty is not other_ty and ty._no_spec_match:
+    if not ty._enable_spec_match or not other_ty._enable_spec_match:
+        # if spec match is disabled then directly checks that the classes are the same
+        return ty is other_ty
+    elif ty._top_level_type is not other_ty._top_level_type:
+        # if the top level type is not the same then the specs are defined to be disjoint
         return False
-    elif ty._top_level_type is other_ty._top_level_type:
-        # match all the elements
-        spec, other_spec = ty._specification, other_ty._specification
 
-        print(f"spec: {spec}")
-        print(f"other_spec: {other_spec}")
+    # recursively checks equivalence of the internal specifications of the type
+    if ty._specs == other_ty._specs:
+        for spec in ty._specs:
+            field, other_field = getattr(ty, spec), getattr(other_ty, spec)
 
-        if len(spec) == len(other_spec):
-            print("spec lengths equal")
-
-            for key in spec.keys():
-                field, other_field = spec[key], other_spec[key]
-
-                if isinstance(field, PartialSpec) and isinstance(
-                    other_field, PartialSpec
-                ):
-                    print(f"fields are spec")
-                    if not specs_match(field, other_field):
-                        return False
-                elif not isinstance(field, PartialSpec) and not isinstance(
-                    other_field, PartialSpec
-                ):
-                    print(f"fields are not spec")
-                    if field != other_field:
-                        return False
-                else:
+            if isinstance(field, PartialSpec) and isinstance(other_field, PartialSpec):
+                if not specs_match(field, other_field):
                     return False
-            return True
-    return False
+            elif field != other_field:
+                return False
+    else:
+        return False
+
+    return True
 
 
 def split_coords(p: torch.Tensor) -> Tuple[torch.Tensor, ...]:

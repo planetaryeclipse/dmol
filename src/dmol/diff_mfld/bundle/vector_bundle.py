@@ -1,26 +1,29 @@
 from abc import abstractmethod
 from math import prod
-from typing import Tuple, Dict, Optional
+from typing import Tuple, Optional
 
 from dmol.diff_mfld.mfld import Manifold
-from dmol.diff_mfld.util import classproperty, PartialSpec
+from dmol.diff_mfld.util import (
+    classproperty,
+    PartialSpec,
+    DerivedPartialSpec,
+)
 
 
-class BundleIndices:
-    @abstractmethod
-    @classproperty
-    def bundles(cls) -> Tuple[VectorBundle, ...]:
-        raise NotImplementedError()
+def _check_base(base):
+    if base is None:
+        raise TypeError("explicitly provided base type is unable to be none")
+    elif not issubclass(base, Manifold):
+        raise TypeError()
+    elif base.top_level is VectorBundle and base.dim is None:
+        raise TypeError()
+    elif base.top_level is Manifold and base.incomplete:
+        raise TypeError()
 
-    @abstractmethod
-    @classproperty
-    def bundle_indices(cls) -> Dict[VectorBundle, Tuple[int, ...]]:
-        raise NotImplementedError()
 
-
-class VectorBundle(Manifold, BundleIndices):
-    _rank: int = None
-    _base: Optional[type[Manifold]] = None
+class VectorBundle(Manifold):
+    _rank: int
+    _base: Optional[type[Manifold]]
 
     def __class_getitem__(cls, args):
         rank: int
@@ -30,67 +33,37 @@ class VectorBundle(Manifold, BundleIndices):
             rank, base = args, None
         elif len(args) == 2:
             rank, base = args
+            _check_base(base)
+        else:
+            raise TypeError()
 
-            if base is None:
-                raise TypeError("explicitly provided base type is unable to be none")
-            elif base.incomplete:
-                raise TypeError("base manifold type not fully specified")
+        if type(rank) is not int or rank < 0:
+            raise TypeError()
 
         namespace = {
             "_dim": rank,
             "_rank": rank,
             "_base": base,
         }
-        if base is None:
-            namespace.update({"__class_getitem__": cls._partial_spec_gen_base})
+        if base is None or base.incomplete:
+            namespace.update({"__class_getitem__": cls._partial_spec_mfld_pass_to_base})
 
-        gen_cls = PartialSpec(
-            f"VectorBundle[{rank, base}]",
-            (VectorBundle,),
-            namespace,
-            creating_derived=True,
-        )
-        return gen_cls
-
-    def _partial_spec_gen_base(cls, args):
-        base: type[Manifold] = args
-
-        namespace = {"_dim": cls._rank, "_rank": cls._rank, "_base": base}
-        if isinstance(base, VectorBundle):
-            if base.incomplete:
-                namespace.update(
-                    {"__class_getitem__": VectorBundle._partial_spec_mfld_pass_to_base}
-                )
-        elif base.incomplete:
-            # print(base)
-            # print(base._incomplete)
-            raise TypeError("base manifold type not fully specified")
-
-        return PartialSpec(
-            f"VectorBundle[{cls._rank}, {base.__name__}]",
-            (cls,),  # prevent generating chain of random unspecialized classes
-            namespace,
-            creating_derived=True,
-            top_level_type=cls._top_level_type,
-        )
+        return DerivedPartialSpec(f"VectorBundle[{rank, base}]", (cls,), namespace)
 
     def _partial_spec_mfld_pass_to_base(cls, args):
         underlying_base: type[Manifold] = args
+        _check_base(underlying_base)
 
-        upd_base = cls._base[underlying_base]
+        upd_base = underlying_base if cls._base is None else cls._base[underlying_base]
         namespace = {"_dim": cls._rank, "_rank": cls._rank, "_base": upd_base}
-        if isinstance(upd_base, VectorBundle):
-            if upd_base.incomplete:
-                namespace.update(
-                    {"__class_getitem__": VectorBundle._partial_spec_mfld_pass_to_base}
-                )
 
-        return PartialSpec(
+        if upd_base.incomplete:
+            namespace.update({"__class_getitem__": cls._partial_spec_mfld_pass_to_base})
+
+        return DerivedPartialSpec(
             f"VectorBundle[{cls._rank}, {upd_base.__name__}]",
-            (cls,),
+            (cls,),  # prevent generating chain of random unspecialized classes
             namespace,
-            creating_derived=True,
-            top_level_type=cls._top_level_type,
         )
 
     @classproperty
@@ -108,14 +81,6 @@ class VectorBundle(Manifold, BundleIndices):
             return cls._base.root
         return cls._base
 
-    @classproperty
-    def bundles(cls):
-        return (cls,)
-
-    @classproperty
-    def bundle_indices(cls):
-        return {cls: 0}
-
 
 class DualBundle(VectorBundle):
     _orig: type[VectorBundle]
@@ -124,7 +89,9 @@ class DualBundle(VectorBundle):
     def __class_getitem__(cls, args):
         orig: type[VectorBundle] = args
 
-        if orig.rank == 0:
+        if not issubclass(orig, VectorBundle):
+            raise TypeError()
+        elif orig.rank == 0:
             raise TypeError("no dual exists for a vector bundle of rank 0")
 
         namespace = {
@@ -138,11 +105,10 @@ class DualBundle(VectorBundle):
                 {"__class_getitem__": DualBundle._partial_spec_mfld_pass_to_base}
             )
 
-        return PartialSpec(
+        return DerivedPartialSpec(
             f"DualBundle[{orig.__name__}]",
             (DualBundle,),
             namespace,
-            creating_derived=True,
         )
 
     def _partial_spec_mfld_pass_to_base(cls, args):
@@ -163,6 +129,10 @@ class DualBundle(VectorBundle):
             creating_derived=True,
             top_level_type=cls._top_level_type,
         )
+
+    @classproperty
+    def dual(cls):
+        return cls._orig
 
 
 class ScalarBundle(VectorBundle[0]):
@@ -212,12 +182,7 @@ class TangentBundle(VectorBundle):
 
         namespace = {"_dim": base.dim, "_rank": base.dim, "_base": base}
 
-        # print("here")
-        # print(base)
-
         if issubclass(base, VectorBundle):
-            # print("is bundle")
-            # print(f"is incomplete: {base.incomplete}")
             if base.incomplete:
                 namespace.update(
                     {"__class_getitem__": TangentBundle._partial_spec_mfld_pass_to_base}
@@ -233,8 +198,6 @@ class TangentBundle(VectorBundle):
     def _partial_spec_mfld_pass_to_base(cls, args):
         underlying_base: type[Manifold] = args
         upd_base = cls._base[underlying_base]
-
-        # print(f"upd_base: {upd_base}")
 
         namespace = {"_dim": upd_base.dim, "_rank": upd_base.dim, "_base": upd_base}
         if issubclass(upd_base, VectorBundle):
@@ -312,19 +275,16 @@ class TensorProductBundle(VectorBundle):
                 }
             )
 
-        return PartialSpec(
+        return DerivedPartialSpec(
             cls._gen_cls_name(bundles),
-            (TensorProductBundle,),
+            (cls,),
             namespace,
-            creating_derived=True,
         )
 
     def _partial_spec_mfld_pass_to_base(cls, args):
         shared_base: type[Manifold] = args
 
         upd_bundles = tuple(bundle[shared_base] for bundle in cls._bundles)
-
-        # print(f"upd_bundles: {upd_bundles}")
 
         vs_rank = prod(bundle.dim for bundle in upd_bundles)
 
@@ -338,15 +298,14 @@ class TensorProductBundle(VectorBundle):
             TensorProductBundle._gen_cls_name(upd_bundles),
             (TensorProductBundle,),
             namespace,
-            creating_derived=True,
-            top_level_type=cls._top_level_type,
         )
 
     @classproperty
     def bundles(cls):
         all_bundles = []
-        for bundle in cls._bundles:
-            all_bundles.extend(bundle.bundles)
+        if cls._bundles is not None:
+            for bundle in cls._bundles:
+                all_bundles.extend(bundle.bundles)
         return tuple(all_bundles)
 
     @abstractmethod
@@ -392,8 +351,8 @@ class KBundle(TensorProductBundle):
                 {"__class_getitem__": KBundle._partial_spec_mfld_pass_to_base}
             )
 
-        return PartialSpec(
-            f"KBundle[{copies}, {bundle}]", (KBundle,), namespace, creating_derived=True
+        return DerivedPartialSpec(
+            f"KBundle[{copies}, {bundle}]", (cls,), namespace, creating_derived=True
         )
 
     def _partial_spec_mfld_pass_to_base(cls, args):
@@ -420,8 +379,6 @@ class TensorBundle(TensorProductBundle):
         covariant_rank: int
         base: Optional[type[Manifold]] = None
 
-        print("here1")
-
         if len(args) == 2:
             contravariant_rank, covariant_rank = args
         else:
@@ -431,10 +388,6 @@ class TensorBundle(TensorProductBundle):
         covariant = KBundle[covariant_rank, DualBundle[TangentBundle]]
 
         combined_bundles = []
-
-        print(f"contravariant bundles: {contravariant.bundles}")
-        print(f"covariant bundles: {covariant.bundles}")
-
         combined_bundles.extend(list(contravariant.bundles))
         combined_bundles.extend(list(covariant.bundles))
 
@@ -463,17 +416,14 @@ class TensorBundle(TensorProductBundle):
                 "_covariant": covariant,
             }
 
-        return PartialSpec(
+        return DerivedPartialSpec(
             f"TensorBundle[{contravariant_rank}, {covariant_rank}, {base}]",
-            (TensorBundle,),
+            (cls,),
             namespace,
-            creating_derived=True,
         )
 
     def _partial_spec_mfld_pass_to_base(cls, args):
         underlying_base: type[Manifold] = args
-
-        print("here2")
 
         upd_contravariant: KBundle = cls._contravariant[underlying_base]
         upd_covariant: KBundle = cls._covariant[underlying_base]
@@ -502,12 +452,10 @@ class TensorBundle(TensorProductBundle):
                 "_covariant": upd_covariant,
             }
 
-        return PartialSpec(
+        return DerivedPartialSpec(
             f"TensorBundle[{upd_contravariant.copies}, {upd_covariant.copies}, {underlying_base}]",
             (TensorBundle,),
             namespace,
-            creating_derived=True,
-            top_level_type=cls._top_level_type,
         )
 
     @classproperty
