@@ -4,18 +4,20 @@ from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.tensor import Vec
 from dmol.diff_mfld.connection.connection import TangentConnection
 
+from typing import Callable
+
 # approximation terms
 
 
-def _f0(y: torch.Tensor):
+def _f1(y: torch.Tensor):
     return y
 
 
-def _f1(y: torch.Tensor, conns: torch.Tensor):
+def _f2(y: torch.Tensor, conns: torch.Tensor):
     return -torch.einsum("kij,i,j", conns, y, y)
 
 
-def _f2(y: torch.Tensor, conns: torch.Tensor, conns_partials: torch.Tensor):
+def _f3(y: torch.Tensor, conns: torch.Tensor, conns_partials: torch.Tensor):
     return (
         -torch.einsum("kijl,l,i,j->k", conns_partials, y, y, y)
         + torch.einsum("kij,ist,s,t,j->k", conns, conns, y, y, y)
@@ -23,7 +25,7 @@ def _f2(y: torch.Tensor, conns: torch.Tensor, conns_partials: torch.Tensor):
     )
 
 
-def _f3(y: torch.Tensor, conns: torch.Tensor, conns_partials: torch.Tensor, conns_sec_partials: torch.Tensor):
+def _f4(y: torch.Tensor, conns: torch.Tensor, conns_partials: torch.Tensor, conns_sec_partials: torch.Tensor):
     return (
         # deriv. of first term
         -torch.einsum("kijlr,r,l,i,j->k", conns_sec_partials, y, y, y, y)
@@ -57,29 +59,84 @@ def approx_exp_map[M: Manifold](
     p_tens = p.p.detach()
     v_tens = v.components.detach()
 
-    q = p_tens + _f0(v_tens)
-
     # implemented in each separate case for readability purposes
     if approx_order == 1:
-        q = p_tens + _f0(v_tens)
+        q = p_tens + _f1(v_tens)
         pass
     elif approx_order == 2:
         conns = conn.coeffs(p)
-        q = p_tens + _f0(v_tens) + 0.5 * _f1(v_tens, conns)
+        q = p_tens + _f1(v_tens) + 1.0 / 2.0 * _f2(v_tens, conns)
     elif approx_order == 3:
         conns = conn.coeffs(p)
         conns_partials = conn.partials(p, 1)
-        q = p_tens + _f0(v_tens) + 0.5 * _f1(v_tens, conns) + 1 / 6.0 * _f2(v_tens, conns, conns_partials)
+        q = p_tens + _f1(v_tens) + 1.0 / 2.0 * _f2(v_tens, conns) + 1.0 / 6.0 * _f3(v_tens, conns, conns_partials)
     elif approx_order == 4:
         conns = conn.coeffs(p)
         conns_partials = conn.partials(p, 1)
         conns_sec_partials = conn.partials(p, 2)
         q = (
             p_tens
-            + _f0(v_tens)
-            + 0.5 * _f1(v_tens, conns)
-            + 1 / 6.0 * _f2(v_tens, conns, conns_partials)
-            + 1 / 24.0 * _f3(v_tens, conns, conns_partials, conns_sec_partials)
+            + _f1(v_tens)
+            + 0.5 * _f2(v_tens, conns)
+            + 1 / 6.0 * _f3(v_tens, conns, conns_partials)
+            + 1 / 24.0 * _f4(v_tens, conns, conns_partials, conns_sec_partials)
         )
+    else:
+        raise NotImplementedError()
 
     return Point[v.bundle](q)
+
+
+def _approx_log_o1(q: torch.Tensor, p: torch.Tensor):
+    return q - p
+
+
+def _approx_log_fp_iter(
+    iter_fn: Callable[[torch.Tensor], torch.Tensor], v0: torch.Tensor, tol: float = 1e-3, max_iters=100
+):
+    v = torch.zeros(())
+    for _ in range(max_iters):
+        v_next = iter_fn(v)
+        if torch.linalg.norm(v_next - v, ord="inf") < tol:
+            return v_next
+        v = v_next
+
+    raise ValueError("fixed-point iteration has failed to converge to a log map solution")
+
+
+def approx_log_map[M: Manifold](
+    p: Point[M] | torch.Tensor, q: Point[M] | torch.Tensor, conn: TangentConnection[M], approx_order=1
+):
+    p = Point[conn.bundle.base](p)
+    q = Point[conn.bundle.base](q)
+
+    p_tens, q_tens = p.p.detach(), q.p.detach()
+
+    v0 = torch.zeros_like(p.p)
+    if approx_order == 1:
+        v = _approx_log_o1(q_tens, p_tens)
+    elif approx_order == 2:
+        conns = conn.coeffs(p)
+        v = _approx_log_fp_iter(lambda v: q_tens - p_tens - 1.0 / 2.0 * _f2(v, conns), v0)
+    elif approx_order == 3:
+        conns = conn.coeffs(p)
+        conns_partials = conn.partials(p, 1)
+        v = _approx_log_fp_iter(
+            lambda v: q_tens - p_tens - 1.0 / 2.0 * _f2(v, conns) - 1.0 / 6.0 * _f3(v, conns, conns_partials), v0
+        )
+    elif approx_order == 4:
+        conns = conn.coeffs(p)
+        conns_partials = conn.partials(p, 1)
+        conns_sec_partials = conn.partials(p, 2)
+        v = _approx_log_fp_iter(
+            lambda v: q_tens
+            - p_tens
+            - 1.0 / 2.0 * _f2(v, conns)
+            - 1.0 / 6.0 * _f3(v, conns, conns_partials)
+            - 1.0 / 24.0 * _f4(v, conns, conns_partials, conns_sec_partials),
+            v0,
+        )
+    else:
+        raise NotImplementedError()
+
+    return Vec[conn.bundle.base](v)
