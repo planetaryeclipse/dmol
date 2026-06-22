@@ -2,6 +2,7 @@ import torch
 from torch.func import jacrev
 
 from abc import abstractmethod
+from inspect import signature
 from typing import Union, Self, override, Callable
 
 from dmol.diff_mfld.util import PartialSpec, DerivedPartialSpec, classproperty, specs_match
@@ -15,6 +16,7 @@ from dmol.diff_mfld.bundle.vector_bundle import (
 )
 from dmol.diff_mfld.bundle.tensor import Tensor
 from dmol.diff_mfld.connection.connection import Connection
+from dmol.diff_mfld.util import split_coords
 
 
 class Field(metaclass=PartialSpec):
@@ -31,18 +33,18 @@ class Field(metaclass=PartialSpec):
 
         return DerivedPartialSpec(f"Field[{tensor.__name__}]", (cls,), namespace)  # pyright: ignore[reportReturnType]
 
-    @classmethod
-    def _spec_incomplete_base(cls, args) -> type[Self]:
+    @staticmethod
+    def _spec_incomplete_base(dcls, args):
         underlying_base: type[Manifold] = args
         if not issubclass(underlying_base, Manifold):
             raise TypeError(f"not provided a manifold type {underlying_base.__name__}")
 
-        print(f"before update tensor: {cls._tensor}")
-        upd_tensor = cls._tensor[underlying_base]
+        print(f"before update tensor: {dcls._tensor}")
+        upd_tensor = dcls._tensor[underlying_base]
         print(f"upd_tensor: {upd_tensor}")
         return DerivedPartialSpec(
             f"Field[{upd_tensor.__name__}]",
-            (cls,),
+            (dcls,),
             {"_tensor": upd_tensor},
         )  # pyright: ignore[reportReturnType]
 
@@ -81,31 +83,44 @@ class Field(metaclass=PartialSpec):
 
 
 class LambdaField(Field):
-    def __init__(self, field_fn: Callable[[torch.Tensor], torch.Tensor]):
+    def __init__(self, field_fn: Callable[[torch.Tensor | tuple[torch.Tensor, ...]], torch.Tensor]):
         super().__init__()
+
+        n = self.tensor.bundle.base.dim
+        num_args = len(signature(field_fn).parameters)
+
+        if num_args > 1:
+            if num_args != n:
+                raise ValueError(f"provided function accepts {num_args} but manifold has {n} dimensions")
+            self._has_coord_fn = True
+        else:
+            self._has_coord_fn = False
         self._field_fn = field_fn
 
     @override
     def _eval(self, p: torch.Tensor):
-        return self._field_fn(p)
-
-    pass
+        if self._has_coord_fn:
+            coords = split_coords(p)
+            components = self._field_fn(*coords)
+        else:
+            components = self._field_fn(p)
+        return components
 
 
 class DiffField(Field):
     _covar_bundle: type[VectorBundle]
 
 
-# specially-named fields for better clarity
+# # specially-named fields for better clarity
 
 
-class VectorField(DiffField[Tensor[TangentBundle]]):
-    _covar_bundle = TensorBundle[1, 1]
+# class VectorField(DiffField[Tensor[TangentBundle]]):
+#     _covar_bundle = TensorBundle[1, 1]
 
 
-class CovectorField(DiffField[Tensor[CotangentBundle]]):
-    _field_bundle = Field[Tensor[TensorBundle[0, 2]]]
+# class CovectorField(DiffField[Tensor[CotangentBundle]]):
+#     _field_bundle = Field[Tensor[TensorBundle[0, 2]]]
 
 
-class ScalarField(DiffField[Tensor[ScalarBundle]]):
-    _field_bundle_type = CotangentBundle
+# class ScalarField(DiffField[Tensor[ScalarBundle]]):
+#     _field_bundle_type = CotangentBundle

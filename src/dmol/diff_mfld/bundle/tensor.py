@@ -18,34 +18,33 @@ class Tensor(metaclass=PartialSpec):
         if issubclass(bundle, TensorProductBundle):
             shape = tuple([prod_bundle.rank for prod_bundle in bundle.bundles])
         else:
-            shape = bundle.rank
+            shape = (bundle.rank,)
 
         namespace = {"_bundle": bundle, "_shape": shape}
         if bundle.incomplete:
             namespace.update({"__class_getitem__": cls._spec_incomplete_base})
 
-        return PartialSpec(
+        return DerivedPartialSpec(
             f"Tensor[{bundle.__name__}]",
             (cls,),
             namespace,
-            creating_derived=True,
         )
 
-    @classmethod
-    def _spec_incomplete_base(cls, args):
+    @staticmethod
+    def _spec_incomplete_base(dcls, args):
         underlying_manifold: type[Manifold] = args
         if underlying_manifold.incomplete:
             raise TypeError("manifold type must be fully specialized")
 
-        upd_bundle = cls._bundle[underlying_manifold]
+        upd_bundle = dcls._bundle[underlying_manifold]
         if issubclass(upd_bundle, TensorProductBundle):
             shape = tuple([prod_bundle.rank for prod_bundle in upd_bundle.bundles])
         else:
-            shape = upd_bundle.rank
+            shape = (upd_bundle.rank,)
 
         return DerivedPartialSpec(
             f"Tensor[{upd_bundle.__name__}]",
-            (cls,),
+            (dcls,),
             {"_bundle": upd_bundle, "_shape": shape},
         )
 

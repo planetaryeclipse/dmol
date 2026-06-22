@@ -107,17 +107,16 @@ class Connection(metaclass=PartialSpec):
         if bundle.incomplete:
             namespace.update({"__class_getitem__": cls._spec_incomplete_base})
 
-        return PartialSpec(
+        return DerivedPartialSpec(
             f"Connection[{bundle.__name__}]",
             (cls,),
             namespace,
-            creating_derived=True,
         )
 
-    @classmethod
-    def _spec_incomplete_base(cls, args):
+    @staticmethod
+    def _spec_incomplete_base(dcls, args):
         underlying_base: type[Manifold] = args
-        upd_bundle = cls._bundle[underlying_base]
+        upd_bundle = dcls._bundle[underlying_base]
 
         n = upd_bundle.base.dim
         r = upd_bundle.rank
@@ -125,7 +124,7 @@ class Connection(metaclass=PartialSpec):
 
         return DerivedPartialSpec(
             f"Connection[{upd_bundle.__name__}]",
-            (cls,),
+            (dcls,),
             {"_bundle": upd_bundle, "_coeffs_shape": coeffs_shape},
         )
 
