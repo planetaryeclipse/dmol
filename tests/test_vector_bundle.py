@@ -2,7 +2,16 @@ import pytest
 
 from dmol.diff_mfld.util import specs_match
 from dmol.diff_mfld.mfld import Manifold
-from dmol.diff_mfld.bundle.vector_bundle import VectorBundle, DualBundle
+from dmol.diff_mfld.bundle.vector_bundle import (
+    VectorBundle,
+    DualBundle,
+    ScalarBundle,
+    TangentBundle,
+    CotangentBundle,
+    TensorProductBundle,
+    KBundle,
+    TensorBundle,
+)
 
 
 class TestVectorBundle:
@@ -187,3 +196,51 @@ class TestDualBundle:
 
         with pytest.raises(ValueError):
             DualBundle[V2]("")
+
+
+# TODO: flesh these tests out more (bare minimum to ensure instantiation for now)
+
+
+class TestScalarBundle:
+    def test_type_gen(self):
+        M = Manifold[2]
+        ScalarBundle[M]("dim")
+
+
+class TestTangentBundle:
+    def test_type_gen(self):
+        M = Manifold[2]
+        TangentBundle[M]("dim")
+
+
+class TestCotangentBundle:
+    def test_type_gen(self):
+        M = Manifold[2]
+        CotangentBundle[M]("dim")
+
+
+class TestTensorProductBundle:
+    def test_type_gen(self):
+        M = Manifold[2]
+        V1 = VectorBundle[2]
+        V2 = VectorBundle[4]
+
+        TPB = TensorProductBundle[V1, V2][M]
+        TPB("dim")
+
+
+class TestKBundle:
+    def test_type_gen(self):
+        M = Manifold[2]
+        V = VectorBundle[2]
+
+        KB = KBundle[3, V][M]
+        KB("dim")
+
+
+class TestTensorBundle:
+    def test_type_gen(self):
+        M = Manifold[2]
+
+        TB = TensorBundle[1, 1][M]
+        TB("dim")
