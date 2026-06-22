@@ -46,9 +46,7 @@ class VectorBundle(Manifold):
             "_rank": rank,
             "_base": base,
         }
-        print(f"namespace: {namespace}")
         if base is None or base.incomplete:
-            print("adding new handler")
             namespace.update({"__class_getitem__": cls._spec_incomplete_base})
 
         return DerivedPartialSpec(f"VectorBundle[{rank, base}]", (cls,), namespace)
@@ -176,8 +174,6 @@ class TangentBundle(VectorBundle):
     @classmethod
     def __class_getitem__(cls, args):  # pyright: ignore[reportIncompatibleMethodOverride]
         base: type[Manifold] = args
-        print(f"base: {base}")
-
         namespace = {"_dim": base.dim, "_rank": base.dim, "_base": base}
 
         if issubclass(base, VectorBundle):
@@ -328,9 +324,6 @@ class KBundle(TensorProductBundle):
         copies: int
         bundle: type[VectorBundle]
         copies, bundle = args
-
-        print(f"copies: {copies}")
-        print(f"bundle: {bundle}")
 
         vs_rank = bundle.dim * copies if not bundle.incomplete else None
 

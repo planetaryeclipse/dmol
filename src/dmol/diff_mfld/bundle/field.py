@@ -23,15 +23,15 @@ class Field(metaclass=PartialSpec):
     _tensor: type[Tensor]
 
     def __class_getitem__(cls, args) -> type[Self]:
-        tensor: type[Tensor] = args
-        if not issubclass(tensor, Tensor):
-            raise TypeError(f"not provided a tensor type {tensor.__name__}")
+        bundle: type[VectorBundle] = args
+        if not issubclass(bundle, VectorBundle):
+            raise TypeError()
 
-        namespace: dict[str, object] = {"_tensor": tensor}
-        if tensor.incomplete:
-            namespace.update({"__class_getitem__": Field._spec_incomplete_base})
+        namespace: dict[str, object] = {"_tensor": Tensor[bundle]}
+        if bundle.incomplete:
+            namespace.update({"__class_getitem__": cls._spec_incomplete_base})
 
-        return DerivedPartialSpec(f"Field[{tensor.__name__}]", (cls,), namespace)  # pyright: ignore[reportReturnType]
+        return DerivedPartialSpec(f"Field[{bundle.__name__}]", (cls,), namespace)  # pyright: ignore[reportReturnType]
 
     @staticmethod
     def _spec_incomplete_base(dcls, args):
@@ -39,11 +39,9 @@ class Field(metaclass=PartialSpec):
         if not issubclass(underlying_base, Manifold):
             raise TypeError(f"not provided a manifold type {underlying_base.__name__}")
 
-        print(f"before update tensor: {dcls._tensor}")
         upd_tensor = dcls._tensor[underlying_base]
-        print(f"upd_tensor: {upd_tensor}")
         return DerivedPartialSpec(
-            f"Field[{upd_tensor.__name__}]",
+            f"Field[{upd_tensor.bundle.__name__}]",
             (dcls,),
             {"_tensor": upd_tensor},
         )  # pyright: ignore[reportReturnType]
@@ -107,8 +105,8 @@ class LambdaField(Field):
         return components
 
 
-class DiffField(Field):
-    _covar_bundle: type[VectorBundle]
+# class DiffField(Field):
+#     _covar_bundle: type[VectorBundle]
 
 
 # # specially-named fields for better clarity

@@ -37,9 +37,7 @@ class LeviCivitaConnection(Connection[TangentBundle]):
         )
         return conn_coeffs
 
-    def riemann(
-        self, p: Union[Point[Self._bundle.base], torch.Tensor]
-    ) -> RiemannCurvature[Self._bundle.base]:
+    def riemann(self, p: Union[Point[Self._bundle.base], torch.Tensor]) -> RiemannCurvature[Self._bundle.base]:
         metric = self._metric_field(p).components
         conn_coeffs = self.coeffs(p)
         conn_coeff_partials = self.partials(p)
@@ -52,9 +50,7 @@ class LeviCivitaConnection(Connection[TangentBundle]):
         )
         return RiemannCurvature[self._bundle.base](curvature)
 
-    def ricci(
-        self, p: Union[Point[Self._bundle.base], torch.Tensor]
-    ) -> RicciCurvature[Self._bundle.base]:
+    def ricci(self, p: Union[Point[Self._bundle.base], torch.Tensor]) -> RicciCurvature[Self._bundle.base]:
         riemann: torch.Tensor = self.riemann(p).components
         metric_inv: torch.Tensor = self._metric_field(p)._inv
 
