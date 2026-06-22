@@ -1,6 +1,7 @@
 [project]
 name = "dmol"
 version = "0.0.1"
+dependencies = ["numpy", "torch", "scipy"]
 
 [build-system]
 requires = ["setuptools >= 77.0.3"]

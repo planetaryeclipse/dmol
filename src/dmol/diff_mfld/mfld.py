@@ -1,6 +1,6 @@
 import torch
 
-from typing import Union
+from typing import Union, Any
 
 from dmol.diff_mfld.util import (
     classproperty,
@@ -8,7 +8,6 @@ from dmol.diff_mfld.util import (
     DerivedPartialSpec,
     specs_match,
     disable_matching,
-    specifications,
 )
 
 
@@ -61,27 +60,17 @@ class Point(metaclass=PartialSpec):
         )
 
     def __init__(self, p: Union[Point, torch.Tensor]):
-        if isinstance(p, Point):
-            if specs_match(self._manifold, p.manifold):
-                print(f"specs match")
-                self._p = p.p
-            else:
-                raise ValueError(
-                    "creating a point from another point must have same manifold"
-                )
-        else:
-            if not (len(p.shape) == 1 and p.shape[0] == self._manifold.dim):
-                raise ValueError(
-                    "provided coords must be a 1D vector with components equal to manifold dimension"
-                )
-            self._p = p
+        self.validate_point(p)
+        self._p = p.p if isinstance(p, Point) else p
 
     def __get__(self, instance, owner):
         return self._p
 
     def __eq__(self, value):
-        if specs_match(self, value):
-            return torch.equal(self._p, value.p)
+        if isinstance(value, Point):
+            if specs_match(self._manifold, value._manifold):
+                return torch.equal(self._p, value.p)
+        return False
 
     @property
     def p(self):
@@ -90,3 +79,16 @@ class Point(metaclass=PartialSpec):
     @classproperty
     def manifold(cls):
         return cls._manifold
+
+    @classmethod
+    def validate_point(cls, p: Union[Point, torch.Tensor]):
+        if cls.incomplete:
+            raise TypeError("point type must be fully specialized to validate instances")
+        elif isinstance(p, Point):
+            if not specs_match(cls, type(p)):
+                raise ValueError(f"manifold of typed point {p.manifold} does not match class manifold {cls.manifold}")
+        elif isinstance(p, torch.Tensor):
+            if not (len(p.shape) == 1 and p.shape[0] == cls.manifold.dim):
+                raise ValueError("provided coords must be a 1D vector with components equal to manifold dimension")
+        else:
+            raise ValueError("instance must either be a point of the same manifold or a compatible 1D array")

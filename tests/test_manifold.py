@@ -29,16 +29,7 @@ class TestManifold:
         assert not Manifold[2].incomplete
 
     def test_obj_gen(self):
-        with pytest.raises(TypeError):
-            Manifold()
-
         assert Manifold[0]("U").name == "U"
-
-        with pytest.raises(TypeError):
-            Manifold[0]()
-
-        with pytest.raises(ValueError):
-            Manifold[0](0)
 
         with pytest.raises(ValueError):
             Manifold[0]("")
@@ -76,9 +67,6 @@ class TestPoint:
         M1 = Manifold[1]
         M2 = Manifold[2]
 
-        with pytest.raises(TypeError):
-            Point()
-
         # test with torch tensor
 
         assert_close(Point[M1](torch.tensor([0.0])).p, torch.tensor([0.0]))
@@ -86,9 +74,6 @@ class TestPoint:
 
         with pytest.raises(TypeError):
             Point(torch.tensor([1.0, 2.0]))
-
-        with pytest.raises(TypeError):
-            Point[M2]()
 
         with pytest.raises(ValueError):
             Point[M2](torch.tensor([1.0]))

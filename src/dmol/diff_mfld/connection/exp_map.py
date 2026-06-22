@@ -15,9 +15,7 @@ from dmol.diff_mfld.riemann import EuclideanMetricField
 from dmol.diff_mfld.bundle.tensor import Vec
 
 
-def _exp_map_ivp_fn(
-    t, y: np.ndarray, n: int, coeffs: Callable[[np.ndarray], np.ndarray]
-) -> np.ndarray:
+def _exp_map_ivp_fn(t, y: np.ndarray, n: int, coeffs: Callable[[np.ndarray], np.ndarray]) -> np.ndarray:
     p, v = y[:n], y[n:]
 
     print(f"p: {p}")
@@ -55,33 +53,17 @@ def ivp_exp_map[T: VectorBundle](
         args=(p.manifold.dim, coeffs_np),
     )
 
-    t = result.t.T
-    p = result.y[:, : p.manifold.dim].T
-    v = result.y[:, p.manifold.dim :].T
+    t_hist = result.t.T
+    p_hist = result.y[:, : p.manifold.dim].T
+    v_hist = result.y[:, p.manifold.dim :].T
 
-    return (Point[p.manifold](p[-1, :]), BundleCurve[v.bundle](t, p, (v,)))
-
-
-
-# def _parallel_transp_ivp_fn(
-#     t,
-#     u: np.ndarray,
-#     coeffs: Callable[[np.ndarray], np.ndarray],
-#     curve: Callable[[float], Tuple[np.ndarray, np.ndarray]],
-# ) -> np.ndarray:
-#     p, v = curve(t)  # time-parameterized curve
-#     conn_coeffs = coeffs(p)
-
-#     dot_u = -np.einsum("i,j,kij->k", v, u, conn_coeffs)
-#     return dot_u
+    return (Point[p.manifold](p_hist[-1, :]), BundleCurve[v.bundle](t_hist, p_hist, (v_hist,)))
 
 
 class ExpMapMethod(Enum):
     IVP = (ivp_exp_map,)  # wrap in tuple to force execution through __call__
 
-    def __call__[T: VectorBundle](
-        self, p: Union[Point[T], torch.Tensor], v: Vec[T], conn: Connection[T]
-    ):
+    def __call__[T: VectorBundle](self, p: Union[Point[T], torch.Tensor], v: Vec[T], conn: Connection[T]):
         print(f"vec bundle: {v.bundle}")
         print(f"conn bundle: {conn.bundle}")
 
@@ -100,22 +82,3 @@ class ExpMapMethod(Enum):
         coeffs = conn.coeffs
 
         return exp_map_handler(p, v, coeffs)
-
-
-M2 = Manifold[2]
-p = torch.tensor([2.0, 3.0])
-v = Vec[M2](torch.tensor([4.0, 5.0]))
-
-euclid = EuclideanMetricField[M2]()
-
-print()
-print(f"euclid: {euclid}")
-print()
-
-flat_conn = euclid.levi_civita()
-
-flat_conn.partials(p)
-
-exit()
-
-ExpMapMethod.IVP(p, v, flat_conn)

@@ -112,7 +112,19 @@ class TestVectorBundle:
 
     def test_obj_gen(self):
         with pytest.raises(TypeError):
-            VectorBundle()
+            VectorBundle("vec")
+
+        with pytest.raises(TypeError):
+            VectorBundle[2]("vec")
+
+        M = Manifold[2]
+        VectorBundle[2, M]("dim")
+        VectorBundle[2][M]("dim")
+
+        with pytest.raises(ValueError):
+            VectorBundle[2, M]("")
+        with pytest.raises(ValueError):
+            VectorBundle[2][M]("")
 
 
 class TestDualBundle:
@@ -163,4 +175,15 @@ class TestDualBundle:
 
     def test_obj_gen(self):
         with pytest.raises(TypeError):
-            DualBundle()
+            DualBundle("dual")
+
+        V1 = VectorBundle
+        with pytest.raises(TypeError):
+            DualBundle[V1]("dual")
+
+        M = Manifold[2]
+        V2 = VectorBundle[3, M]
+        DualBundle[V2]("dual")
+
+        with pytest.raises(ValueError):
+            DualBundle[V2]("")
