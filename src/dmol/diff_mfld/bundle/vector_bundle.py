@@ -293,7 +293,7 @@ class TensorProductBundle(VectorBundle):
         )
 
     @classproperty
-    def bundles(cls):
+    def bundles(cls) -> tuple[type[VectorBundle], ...]:
         all_bundles = []
         if cls._bundles is not None:
             for bundle in cls._bundles:
@@ -304,7 +304,7 @@ class TensorProductBundle(VectorBundle):
         return tuple(all_bundles)
 
     @classproperty
-    def bundle_indices(cls):
+    def bundle_indices(cls) -> dict[type[VectorBundle], list[int]]:
         all_bundles = list(cls.bundles)
         unique_bundle_types = set(all_bundles)
 

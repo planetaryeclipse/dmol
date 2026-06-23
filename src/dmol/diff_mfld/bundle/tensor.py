@@ -4,7 +4,13 @@ from typing import Tuple
 
 from dmol.diff_mfld.util import classproperty, PartialSpec, DerivedPartialSpec, specs_match, specifications
 from dmol.diff_mfld.mfld import Manifold
-from dmol.diff_mfld.bundle.vector_bundle import VectorBundle, TangentBundle, CotangentBundle, TensorProductBundle
+from dmol.diff_mfld.bundle.vector_bundle import (
+    VectorBundle,
+    ScalarBundle,
+    TangentBundle,
+    CotangentBundle,
+    TensorProductBundle,
+)
 
 
 def _are_bundles_equiv(b1: tuple[type[VectorBundle], ...], b2: tuple[type[VectorBundle], ...]):
@@ -22,6 +28,33 @@ def _get_most_general_bundle(b1: type[VectorBundle], b2: type[VectorBundle]):
     elif issubclass(b2, b1):
         return b1
     return b1
+
+
+def _bundles_compatible(b1: type[VectorBundle], b2: type[VectorBundle]) -> bool:
+    if b1.incomplete or b2.incomplete:
+        raise TypeError(f"bundles {b1} and {b2} must be completely specified")
+
+    if issubclass(b1, TensorProductBundle) and issubclass(b2, TensorProductBundle):
+        b1_bundles, b2_bundles = b1.bundles, b2.bundles
+    elif issubclass(b1, TensorProductBundle):
+        b1_bundles, b2_bundles = b1.bundles, (b2,)
+    elif issubclass(b2, TensorProductBundle):
+        b1_bundles, b2_bundles = (b1,), b2.bundles
+    else:
+        # both are tensors instantiated off a vector bundle
+        if not specs_match(b1, b2):
+            return False
+        return True
+
+    if _are_bundles_equiv(b1_bundles, b2_bundles):
+        return True
+    return False
+
+
+def _get_compatible_bundle(b1: type[VectorBundle], b2: type[VectorBundle]) -> type[VectorBundle]:
+    if _bundles_compatible(b1, b2):
+        return _get_most_general_bundle(b1, b2)
+    raise ValueError(f"bundles {b1} and {b2} are incompatible")
 
 
 @specifications(fields={"_bundle"})
@@ -80,7 +113,7 @@ class Tensor(metaclass=PartialSpec):
         self._components = components
 
     @classproperty
-    def bundle(cls):
+    def bundle(cls) -> type[VectorBundle]:
         return cls._bundle
 
     @classproperty
@@ -103,23 +136,8 @@ class Tensor(metaclass=PartialSpec):
 
     def __add__(self, other):
         if isinstance(other, Tensor):
-            self_bundle, other_bundle = type(self).bundle, type(other).bundle
-            if issubclass(self_bundle, TensorProductBundle) and issubclass(other_bundle, TensorProductBundle):
-                self_bundles, other_bundles = self_bundle.bundles, other_bundle.bundles
-            elif issubclass(self_bundle, TensorProductBundle):
-                self_bundles, other_bundles = self_bundle.bundles, (other_bundle,)
-            elif issubclass(other_bundle, TensorProductBundle):
-                self_bundles, other_bundles = (self_bundle,), other_bundle.bundles
-            else:
-                # both are tensors instantiated off a vector bundle
-                if not specs_match(self_bundle, other_bundle):
-                    raise ValueError("bundles must be equivalent")
-                return Tensor[self_bundle](self.components + other.components)
-
-            if _are_bundles_equiv(self_bundles, other_bundles):
-                bundle_ty = _get_most_general_bundle(self_bundle, other_bundle)  # type: ignore
-                return Tensor[bundle_ty](self.components + other.components)
-            raise ValueError("incompatible bundles cannot be added")
+            result_bundle = _get_compatible_bundle(self.bundle, other.bundle)
+            return Tensor[result_bundle](self.components + other.components)
         raise NotImplemented()
 
     def __sub__(self, other):

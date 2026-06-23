@@ -14,7 +14,7 @@ from dmol.diff_mfld.bundle.vector_bundle import (
     CotangentBundle,
     TensorBundle,
 )
-from dmol.diff_mfld.bundle.tensor import Tensor
+from dmol.diff_mfld.bundle.tensor import Tensor, _get_compatible_bundle, _bundles_compatible
 from dmol.diff_mfld.connection.connection import Connection
 from dmol.diff_mfld.util import split_coords
 
@@ -66,8 +66,12 @@ class Field(metaclass=PartialSpec):
         return partials
 
     @classproperty
-    def tensor(cls):
+    def tensor(cls) -> type[Tensor]:
         return cls._tensor
+
+    @classproperty
+    def bundle(cls) -> type[VectorBundle]:
+        return cls._tensor.bundle
 
     @abstractmethod
     def _eval(self, p: torch.Tensor) -> torch.Tensor:
@@ -79,6 +83,119 @@ class Field(metaclass=PartialSpec):
         partials = jacrev(self._eval)(p)
         return partials
 
+    def __add__(self, other):
+        if isinstance(other, Field):
+            result_bundle = _get_compatible_bundle(self.bundle, other.bundle)
+            return _AddField[result_bundle](self, other)
+        raise NotImplemented()
+
+    def __sub__(self, other):
+        if isinstance(other, Field):
+            result_bundle = _get_compatible_bundle(self.bundle, other.bundle)
+            return _SubField[result_bundle](self, other)
+        raise NotImplemented()
+
+    def __mul__(self, other):
+        lhs, rhs = self, other  # for clarity
+        return _shared_field_mul(lhs, rhs)
+
+    def __rmul__(self, other):
+        lhs, rhs = other, self
+        return _shared_field_mul(lhs, rhs)
+
+
+def _shared_field_mul(lhs: Field | float, rhs: Field | float):
+    if isinstance(lhs, Field) and isinstance(rhs, Field):
+        scalar_bundle = ScalarBundle[lhs.bundle.base]
+        if _bundles_compatible(lhs.bundle, scalar_bundle) and _bundles_compatible(rhs.bundle, scalar_bundle):
+            return _MulField[scalar_bundle](lhs, rhs)
+        elif _bundles_compatible(lhs.bundle, scalar_bundle):
+            return _MulField[rhs.bundle](lhs, rhs)
+        elif _bundles_compatible(rhs.bundle, scalar_bundle):
+            return _MulField[lhs.bundle](lhs, rhs)
+        else:
+            raise ValueError("at least one field must be compatible to a ScalarField")
+    elif isinstance(lhs, Field):
+        return _MulField[lhs.bundle](lhs, rhs)
+    elif isinstance(rhs, Field):
+        return _MulField[rhs.bundle](lhs, rhs)
+    raise NotImplemented()  # not reachable
+
+
+# following are simple wrappers with no checks for internal use only (note these are implemented as separate fields to
+# allow custom behavior when evaluating the covariant derivative)
+
+
+class _AddField(Field):
+    def __init__(self, field: Field, other: Field):
+        super().__init__()
+        self._field = field
+        self._other = other
+
+    @override
+    def _eval(self, p: torch.Tensor) -> torch.Tensor:
+        return self._field._eval(p) + self._other._eval(p)
+
+    @override
+    def _eval_partials(self, p: torch.Tensor) -> torch.Tensor:
+        return self._field._eval_partials(p) + self._other._eval_partials(p)
+
+    def __repr__(self) -> str:
+        return f"_AddField[{self._field}, {self._other}]"
+
+
+class _SubField(Field):
+    def __init__(self, field: Field, other: Field):
+        super().__init__()
+        self._field = field
+        self._other = other
+
+    @override
+    def _eval(self, p: torch.Tensor) -> torch.Tensor:
+        return self._field._eval(p) - self._other._eval(p)
+
+    @override
+    def _eval_partials(self, p: torch.Tensor) -> torch.Tensor:
+        return self._field._eval_partials(p) - self._other._eval_partials(p)
+
+    def __repr__(self) -> str:
+        return f"_SubField[{self._field}, {self._other}]"
+
+
+class _MulField(Field):
+    def __init__(self, lhs: Field | float, rhs: Field | float):
+        super().__init__()
+        self._lhs = lhs
+        self._rhs = rhs
+
+        self._is_lhs_field = not type(lhs) is float
+        self._is_rhs_field = not type(rhs) is float
+
+    @override
+    def _eval(self, p: torch.Tensor) -> torch.Tensor:
+        if self._is_lhs_field and self._is_rhs_field:
+            return self._lhs._eval(p) * self._rhs._eval(p)  # type: ignore
+        elif self._is_lhs_field:
+            return self._lhs._eval(p) * self._rhs  # type: ignore
+        elif self._is_rhs_field:
+            return self._lhs * self._rhs._eval(p)  # type: ignore
+        raise RuntimeError()  # not reachable
+
+    @override
+    def _eval_partials(self, p: torch.Tensor) -> torch.Tensor:
+        if self._is_lhs_field and self._is_rhs_field:
+            result = torch.outer(self._lhs._eval_partials(p), self._rhs._eval(p))  # type: ignore
+            result += torch.outer(self._lhs._eval(p), self._rhs._eval_partials(p))  # type: ignore
+            return result
+        elif self._is_lhs_field:
+            return self._lhs._eval_partials(p) * self._rhs  # type: ignore
+        elif self._is_rhs_field:
+            return self._lhs * self._rhs._eval_partials(p)  # type: ignore
+        raise RuntimeError()  # not reachabl
+
+    def __repr__(self) -> str:
+        return f"_MulField[{self._lhs}, {self._rhs}]"
+
 
 class LambdaField(Field):
     def __init__(self, field_fn: Callable[[torch.Tensor | tuple[torch.Tensor, ...]], torch.Tensor]):
@@ -87,22 +204,33 @@ class LambdaField(Field):
         n = self.tensor.bundle.base.dim
         num_args = len(signature(field_fn).parameters)
 
+        sample_p = torch.zeros((n,))
+
         if num_args > 1:
             if num_args != n:
                 raise ValueError(f"provided function accepts {num_args} but manifold has {n} dimensions")
             self._has_coord_fn = True
+            sample_components = field_fn(*split_coords(sample_p))
         else:
             self._has_coord_fn = False
+            sample_components = field_fn(sample_p)
+
+        if sample_components.shape != self.tensor.shape:
+            raise ValueError()
+
         self._field_fn = field_fn
 
     @override
     def _eval(self, p: torch.Tensor):
         if self._has_coord_fn:
-            coords = split_coords(p)
-            components = self._field_fn(*coords)
+            components = self._field_fn(*split_coords(p))
         else:
             components = self._field_fn(p)
         return components
+
+
+class ScalarField(Field[ScalarBundle]):
+    pass
 
 
 # class DiffField(Field):
