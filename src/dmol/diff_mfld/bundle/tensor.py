@@ -6,7 +6,6 @@ from dmol.diff_mfld.util import classproperty, PartialSpec, DerivedPartialSpec, 
 from dmol.diff_mfld.mfld import Manifold
 from dmol.diff_mfld.bundle.vector_bundle import (
     VectorBundle,
-    ScalarBundle,
     TangentBundle,
     CotangentBundle,
     TensorProductBundle,
@@ -67,11 +66,17 @@ class Tensor(metaclass=PartialSpec):
     # which of the constituent bundles are scalar bundles)
 
     @staticmethod
-    def _compute_shape(bundle: type[VectorBundle] | type[TensorProductBundle]):
+    def _compute_shape(bundle: type[VectorBundle] | type[TensorProductBundle]) -> tuple[int, ...] | None:
         # remove the zeros to form the realizable size
 
         if issubclass(bundle, TensorProductBundle):
-            return tuple([prod_bundle.rank for prod_bundle in bundle.bundles if prod_bundle.rank > 0])
+            return tuple(
+                [
+                    prod_bundle.rank
+                    for prod_bundle in bundle.bundles
+                    if prod_bundle.rank is None or (prod_bundle.rank is not None and prod_bundle.rank > 0)
+                ]
+            )
         elif bundle.rank == 0:
             return tuple()
         return (bundle.rank,)

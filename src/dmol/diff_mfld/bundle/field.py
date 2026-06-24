@@ -3,19 +3,17 @@ from torch.func import jacrev
 
 from abc import abstractmethod
 from inspect import signature
-from typing import Union, Self, override, Callable
+from typing import Union, Self, override, Callable, Sequence
 
-from dmol.diff_mfld.util import PartialSpec, DerivedPartialSpec, classproperty, specs_match
+from dmol.diff_mfld.util import PartialSpec, DerivedPartialSpec, classproperty
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.vector_bundle import (
     ScalarBundle,
     VectorBundle,
     TangentBundle,
     CotangentBundle,
-    TensorBundle,
 )
 from dmol.diff_mfld.bundle.tensor import Tensor, _get_compatible_bundle, _bundles_compatible
-from dmol.diff_mfld.connection.connection import Connection
 from dmol.diff_mfld.util import split_coords
 
 
@@ -23,15 +21,22 @@ class Field(metaclass=PartialSpec):
     _tensor: type[Tensor]
 
     def __class_getitem__(cls, args) -> type[Self]:
-        bundle: type[VectorBundle] = args
-        if not issubclass(bundle, VectorBundle):
+        ty: type[VectorBundle] | type[Tensor] = args
+
+        if issubclass(ty, VectorBundle):
+            tensor_ty = Tensor[ty]
+        elif issubclass(ty, Tensor):
+            tensor_ty = ty
+        else:
             raise TypeError()
 
-        namespace: dict[str, object] = {"_tensor": Tensor[bundle]}
-        if bundle.incomplete:
+        namespace: dict[str, object] = {"_tensor": tensor_ty}
+        if tensor_ty.incomplete:
             namespace.update({"__class_getitem__": cls._spec_incomplete_base})
 
-        return DerivedPartialSpec(f"Field[{bundle.__name__}]", (cls,), namespace)  # pyright: ignore[reportReturnType]
+        return DerivedPartialSpec(
+            f"Field[{tensor_ty.__name__}]", (cls,), namespace
+        )  # pyright: ignore[reportReturnType]
 
     @staticmethod
     def _spec_incomplete_base(dcls, args):
@@ -50,7 +55,7 @@ class Field(metaclass=PartialSpec):
         if type(self) == Field:
             raise TypeError("fields cannot be instantiated without being subclassed")
 
-    def __call__(self, p: Union[Point, torch.Tensor]):
+    def __call__(self, p: Union[Point, torch.Tensor]) -> Tensor:
         # TODO: add options to the library to rigidly enforce properly typed point input
         p = Point[self._tensor.bundle.base](p)  # ensures that the point is compatible
         return self._tensor(self._eval(p.p))
@@ -197,6 +202,71 @@ class _MulField(Field):
         return f"_MulField[{self._lhs}, {self._rhs}]"
 
 
+def coord_repr(
+    repr: torch.Tensor | float | Sequence[torch.Tensor | float] | Sequence[Sequence[torch.Tensor | float]],
+) -> torch.Tensor:
+    # scalar-valued
+    if type(repr) is torch.Tensor:
+        return repr
+    elif type(repr) is float:
+        return torch.tensor(repr)
+    # vector-valued
+    elif type(repr[0]) is torch.Tensor or type(repr[0]) is float:  # type: ignore
+        vec_repr: Collection[torch.Tensor | float, ...] = repr  # type: ignore
+        n = len(vec_repr)
+
+        vec = torch.zeros((n,))
+        for i in range(n):
+            vec[i] = vec_repr[i]
+        return vec
+    # matrix-valued
+    else:
+        mat_repr: Collection[Collection[torch.Tensor | float, ...], ...] = repr  # type: ignore
+        n = len(mat_repr)
+        m = len(mat_repr[0])
+
+        mat = torch.zeros((n, m))
+        for i in range(n):
+            for j in range(m):
+                mat[i, j] = mat_repr[i][j]
+        return mat
+
+
+def test_field_expr_callable_for_gradient(
+    fn: Callable[[*tuple[torch.Tensor, ...]], torch.Tensor],
+    coord_dim: int,
+    single_arg=False,
+    num_samples=20,
+    coord_mean=2.0,
+    coord_std=5.0,
+):
+    p_dist = torch.distributions.MultivariateNormal(
+        coord_mean * torch.ones((coord_dim,)), coord_std**2 * torch.eye(coord_dim)
+    )
+
+    fn_single_arg = fn if single_arg else lambda p: fn(*split_coords(p))
+    fn_grad = jacrev(fn_single_arg)
+
+    # samples the initial point
+    p_initial = p_dist.sample()
+    initial_val = fn_single_arg(p_initial)
+
+    for _ in range(num_samples):
+        p_sample = p_dist.sample()
+        val = fn_single_arg(p_sample)
+        grad = fn_grad(p_sample)
+
+        # if the value has changed we expect the gradient to also be nonzero
+        if not torch.allclose(initial_val, val):
+            if torch.allclose(grad, torch.zeros_like(grad)):
+                raise ValueError(
+                    "zero gradient detected thereby suggesting probable gradient loss in field expression callable"
+                )
+
+        # evaluates between a number of randomly sampled points
+        initial_val = val
+
+
 class LambdaField(Field):
     def __init__(self, field_fn: Callable[[torch.Tensor | tuple[torch.Tensor, ...]], torch.Tensor]):
         super().__init__()
@@ -233,20 +303,9 @@ class ScalarField(Field[ScalarBundle]):
     pass
 
 
-# class DiffField(Field):
-#     _covar_bundle: type[VectorBundle]
+class VectorField(Field[TangentBundle]):
+    pass
 
 
-# # specially-named fields for better clarity
-
-
-# class VectorField(DiffField[Tensor[TangentBundle]]):
-#     _covar_bundle = TensorBundle[1, 1]
-
-
-# class CovectorField(DiffField[Tensor[CotangentBundle]]):
-#     _field_bundle = Field[Tensor[TensorBundle[0, 2]]]
-
-
-# class ScalarField(DiffField[Tensor[ScalarBundle]]):
-#     _field_bundle_type = CotangentBundle
+class CovectorField(Field[CotangentBundle]):
+    pass

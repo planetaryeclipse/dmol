@@ -75,11 +75,27 @@ class DerivedPartialSpec(PartialSpec):
         /,
         **kwds,
     ):
-        (base,) = bases
+        # pulls any previously set specs from the base classes
+        upd_full_specs = {}
+        for base in bases:
+            if getattr(base, "_specs", None) is None:
+                continue
 
-        members = {key: value for key, value in inspect.getmembers(base)}
-        upd_full_specs = {spec: (members[spec] if spec in members.keys() else None) for spec in base._specs}
+            members = {key: value for key, value in inspect.getmembers(base)}
+            for spec in base._specs:
+                if spec in members:
+                    if spec in upd_full_specs:
+                        # override the specs if defined later in the mro
+                        if members[spec] is not None:
+                            upd_full_specs[spec] = members[spec]
+                    else:
+                        upd_full_specs[spec] = members[spec]
 
+                    pass
+                elif spec not in upd_full_specs:
+                    upd_full_specs[spec] = None  # default if not in bases
+
+        # applies any new specs from the namespace (if applicable)
         for key, value in namespace.items():
             if key in upd_full_specs:
                 upd_full_specs[key] = value

@@ -55,9 +55,7 @@ def test_ralm():
     # print(conn(p))
 
     mfld_cfg = MfldCfg(metric_field, conn)
-    constr_solv_cfg = ConstrainedSolverCfg(
-        SubsolverMethod.RIEM_GRAD_DESCENT, SolverCfg()
-    )
+    constr_solv_cfg = ConstrainedSolverCfg(SubsolverMethod.RIEM_GRAD_DESCENT, SolverCfg())
 
     print(mfld_cfg.log_method(p, p, mfld_cfg.conn))
     print(dist_squared_map(p, p, mfld_cfg))

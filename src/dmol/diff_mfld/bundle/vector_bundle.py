@@ -5,7 +5,6 @@ from typing import Tuple, Optional, Any
 from dmol.diff_mfld.mfld import Manifold
 from dmol.diff_mfld.util import (
     classproperty,
-    PartialSpec,
     DerivedPartialSpec,
 )
 
@@ -69,19 +68,124 @@ class VectorBundle(Manifold):
         )
 
     @classproperty
-    def rank(cls):
+    def rank(cls) -> int:
         return cls._rank
 
     @classproperty
-    def base(cls):
+    def base(cls) -> type[Manifold] | None:
         return cls._base
 
     @classproperty
-    def root(cls):
+    def root(cls) -> type[Manifold] | None:
         # finds the underlying root of all the chained bundles
         if cls._base is not None and issubclass(cls._base, VectorBundle):
             return cls._base.root
         return cls._base
+
+
+# NOTE: in a rust library we would implement this as from traits for special tensor bundles but because this is Python
+# it has to be manual implementations for each special bundle type for now
+
+
+class TensorProductBundle(VectorBundle):
+    _bundles: Tuple[type[VectorBundle], ...]
+
+    @staticmethod
+    def _gen_cls_name(bundles: Tuple[type[VectorBundle], ...]) -> str:
+        bundles_comb = ""
+        for i, bundle in enumerate(bundles):
+            bundles_comb += bundle.__name__
+            if i < len(bundles) - 1:
+                bundles_comb += ", "
+
+        return f"TensorProductBundle[{bundles_comb}]"
+
+    @classmethod
+    def __class_getitem__(cls, args):  # pyright: ignore[reportIncompatibleMethodOverride]
+        if type(args) is not tuple:
+            return args  # not a tensor if only provided a single bundle
+
+        # must ensure that all the provided bundles are defined and share the same underlying manifold or that all are
+        # undefined so that some base manifold can be provided through delayed specification
+        bundles: Tuple[type[VectorBundle], ...] = args
+
+        bundles_incomplete: Optional[bool] = None
+        for bundle in bundles:
+            if bundles_incomplete is None:
+                bundles_incomplete = bundle.incomplete  # type: ignore
+            elif bundle.incomplete != bundles_incomplete:  # type: ignore
+                raise TypeError(
+                    "all bundles combined through the tensor product must be all completely specialized or incomplete"
+                )
+
+        # if fully specialized then check to ensure that they share the same base manifold
+        shared_base: Optional[type[Manifold]] = None
+        if not bundles_incomplete:
+            for bundle in bundles:
+                if shared_base is None:
+                    shared_base = bundle.base
+                elif bundle.root != shared_base:
+                    raise TypeError("all specialized bundles must share same root manifold")
+
+        vs_rank = prod(bundle.dim for bundle in bundles) if not bundles_incomplete else None
+
+        namespace = {
+            "_dim": vs_rank,
+            "_rank": vs_rank,
+            "_base": shared_base,
+            "_bundles": bundles,
+        }
+        if bundles_incomplete:
+            namespace.update({"__class_getitem__": TensorProductBundle._spec_incomplete_base})
+
+        return DerivedPartialSpec(
+            cls._gen_cls_name(bundles),
+            (cls,),
+            namespace,
+        )
+
+    @staticmethod
+    def _spec_incomplete_base(dcls, args):  # pyright: ignore[reportIncompatibleMethodOverride]
+        shared_base: type[Manifold] = args
+
+        upd_bundles = tuple(bundle[shared_base] for bundle in dcls._bundles)
+
+        vs_rank = prod(bundle.dim for bundle in upd_bundles)
+
+        namespace = {
+            "_dim": vs_rank,
+            "_rank": vs_rank,
+            "_base": shared_base,
+            "_bundles": upd_bundles,
+        }
+
+        return DerivedPartialSpec(
+            TensorProductBundle._gen_cls_name(upd_bundles),
+            (dcls,),
+            namespace,
+        )
+
+    @classproperty
+    def bundles(cls) -> tuple[type[VectorBundle], ...]:
+        all_bundles = []
+        if cls._bundles is not None:
+            for bundle in cls._bundles:
+                if issubclass(bundle, TensorBundle):
+                    all_bundles.extend(bundle.bundles)
+                else:
+                    all_bundles.append(bundle)
+        return tuple(all_bundles)
+
+    @classproperty
+    def bundle_indices(cls) -> dict[type[VectorBundle], list[int]]:
+        all_bundles = list(cls.bundles)
+        unique_bundle_types = set(all_bundles)
+
+        bundle_type_count = {
+            unique_bundle: [i for i, bundle in enumerate(all_bundles) if bundle == unique_bundle]
+            for unique_bundle in unique_bundle_types
+        }
+        return bundle_type_count
 
 
 class DualBundle(VectorBundle):
@@ -93,6 +197,8 @@ class DualBundle(VectorBundle):
 
         if not issubclass(orig, VectorBundle):
             raise TypeError()
+        elif issubclass(orig, TensorProductBundle):
+            raise NotImplementedError("duals of tensor product bundles not currently supported")
         elif orig.rank == 0:
             raise TypeError("no dual exists for a vector bundle of rank 0")
 
@@ -208,111 +314,6 @@ class TangentBundle(VectorBundle):
 
 
 CotangentBundle = DualBundle[TangentBundle]
-
-
-# NOTE: in a rust library we would implement this as from traits for special tensor bundles but because this is Python
-# it has to be manual implementations for each special bundle type for now
-
-
-class TensorProductBundle(VectorBundle):
-    _bundles: Tuple[type[VectorBundle], ...]
-
-    @staticmethod
-    def _gen_cls_name(bundles: Tuple[type[VectorBundle], ...]) -> str:
-        bundles_comb = ""
-        for i, bundle in enumerate(bundles):
-            bundles_comb += bundle.__name__
-            if i < len(bundles) - 1:
-                bundles_comb += ", "
-
-        return f"TensorProductBundle[{bundles_comb}]"
-
-    @classmethod
-    def __class_getitem__(cls, args):  # pyright: ignore[reportIncompatibleMethodOverride]
-        if type(args) is not tuple:
-            return args  # not a tensor if only provided a single bundle
-
-        # must ensure that all the provided bundles are defined and share the same underlying manifold or that all are
-        # undefined so that some base manifold can be provided through delayed specification
-        bundles: Tuple[type[VectorBundle], ...] = args
-
-        bundles_incomplete: Optional[bool] = None
-        for bundle in bundles:
-            if bundles_incomplete is None:
-                bundles_incomplete = bundle.incomplete  # type: ignore
-            elif bundle.incomplete != bundles_incomplete:  # type: ignore
-                raise TypeError(
-                    "all bundles combined through the tensor product must be all completely specialized or incomplete"
-                )
-
-        # if fully specialized then check to ensure that they share the same base manifold
-        shared_base: Optional[type[Manifold]] = None
-        if not bundles_incomplete:
-            for bundle in bundles:
-                if shared_base is None:
-                    shared_base = bundle.base
-                elif bundle.root != shared_base:
-                    raise TypeError("all specialized bundles must share same root manifold")
-
-        vs_rank = prod(bundle.dim for bundle in bundles) if not bundles_incomplete else None
-
-        namespace = {
-            "_dim": vs_rank,
-            "_rank": vs_rank,
-            "_base": shared_base,
-            "_bundles": bundles,
-        }
-        if bundles_incomplete:
-            namespace.update({"__class_getitem__": TensorProductBundle._spec_incomplete_base})
-
-        return DerivedPartialSpec(
-            cls._gen_cls_name(bundles),
-            (cls,),
-            namespace,
-        )
-
-    @staticmethod
-    def _spec_incomplete_base(dcls, args):  # pyright: ignore[reportIncompatibleMethodOverride]
-        shared_base: type[Manifold] = args
-
-        upd_bundles = tuple(bundle[shared_base] for bundle in dcls._bundles)
-
-        vs_rank = prod(bundle.dim for bundle in upd_bundles)
-
-        namespace = {
-            "_dim": vs_rank,
-            "_rank": vs_rank,
-            "_base": shared_base,
-            "_bundles": upd_bundles,
-        }
-
-        return DerivedPartialSpec(
-            TensorProductBundle._gen_cls_name(upd_bundles),
-            (dcls,),
-            namespace,
-        )
-
-    @classproperty
-    def bundles(cls) -> tuple[type[VectorBundle], ...]:
-        all_bundles = []
-        if cls._bundles is not None:
-            for bundle in cls._bundles:
-                if issubclass(bundle, TensorBundle):
-                    all_bundles.extend(bundle.bundles)
-                else:
-                    all_bundles.append(bundle)
-        return tuple(all_bundles)
-
-    @classproperty
-    def bundle_indices(cls) -> dict[type[VectorBundle], list[int]]:
-        all_bundles = list(cls.bundles)
-        unique_bundle_types = set(all_bundles)
-
-        bundle_type_count = {
-            unique_bundle: [i for i, bundle in enumerate(all_bundles) if bundle == unique_bundle]
-            for unique_bundle in unique_bundle_types
-        }
-        return bundle_type_count
 
 
 class KBundle(TensorProductBundle):

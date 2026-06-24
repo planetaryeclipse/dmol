@@ -1,16 +1,16 @@
 import torch
 
 from torch.func import jacrev
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 
 from dataclasses import dataclass
-from typing import Tuple, Union, Self, Optional, Protocol
+from typing import Tuple, Union, Callable
 
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.util import PartialSpec, DerivedPartialSpec, classproperty
-from dmol.diff_mfld.bundle.tensor import Tensor, Vec
-
-# from dmol.diff_mfld.geometry.field import Field, VectorField
+from dmol.diff_mfld.bundle.vector_bundle import TangentBundle, ScalarBundle, CotangentBundle, TensorBundle
+from dmol.diff_mfld.bundle.tensor import Tensor, Vec, _bundles_compatible
+from dmol.diff_mfld.bundle.field import Field, VectorField
 from dmol.diff_mfld.bundle.vector_bundle import (
     VectorBundle,
     TensorProductBundle,
@@ -177,14 +177,78 @@ class Connection(metaclass=PartialSpec):
         partials = partials_fn(p)
         return partials
 
-    # def covar(field:  Field[Tensor[Self._bundle]] & FieldCovarDeriv, vf: VectorField) -> Field:
-    #     return field.covar(self, vf)
+    def covar(self, field: Field | FieldCustomCovar, vf: VectorField) -> Field:
+        if isinstance(field, FieldCustomCovar):
+            return field.covar(vf, self)
+        return self._covar(field, vf)
 
-    # def total_covar(field: FieldCovarDeriv) -> Field:
-    #     pass
+    def total_covar(self, field: Field | FieldCustomCovar) -> Field:
+        if isinstance(field, FieldCustomCovar):
+            return field.total_covar(self)
+        return self._total_covar(field)
+
+    @abstractmethod
+    def _covar(self, field: Field, vf: VectorField) -> Field:
+        raise NotImplementedError("covariant derivatives currently only supported for tangent bundle connections")
+
+    @abstractmethod
+    def _total_covar(self, field: Field) -> Field:
+        raise NotImplementedError("total covariant derivatives currently only supported for tangent bundle connections")
+
+
+class FieldCustomCovar(Field):
+    @abstractmethod
+    def covar(self, vf: VectorField, conn: Connection) -> Field:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def total_covar(self, conn: Connection) -> Field:
+        raise NotImplementedError()
+
+
+class _TotalCovarDerivField(Field):
+    def __init__(
+        self,
+        field: Field,
+        conn: TangentConnection,
+        eval_fn: Callable[[torch.Tensor, Field, TangentConnection], torch.Tensor],
+    ):
+        super().__init__()
+        self._field = field
+        self._conn = conn
+        self._eval_fn = eval_fn
+
+    @staticmethod
+    def scalar_eval(p: torch.Tensor, field: Field, conn: Connection) -> torch.Tensor:
+        return field._eval_partials(p)
+
+    @staticmethod
+    def cotangent_eval(p: torch.Tensor, field: Field, conn: Connection) -> torch.Tensor:
+        return field._eval_partials(p) - torch.einsum("k,kji->ij", field._eval(p), conn.coeffs(p))
+
+    def _eval(self, p: torch.Tensor) -> torch.Tensor:
+        return self._eval_fn(p, self._field, self._conn)
 
 
 class TangentConnection(Connection[TangentBundle]):
+    def _covar(self, field: Field, vf: VectorField) -> Field:
+        # TODO: add operations on tensors
+        raise NotImplementedError()
+
+    def _total_covar(self, field: Field) -> Field:
+        # TODO: implement the total covariant derivative for all tensor fields
+        if _bundles_compatible(field.bundle, ScalarBundle[field.bundle.base]):
+            return _TotalCovarDerivField[CotangentBundle[field.bundle.base]](
+                field, self, _TotalCovarDerivField.scalar_eval
+            )
+        elif _bundles_compatible(field.bundle, CotangentBundle[field.bundle.base]):
+            return _TotalCovarDerivField[TensorBundle[0, 2][field.bundle.base]](
+                field, self, _TotalCovarDerivField.cotangent_eval
+            )
+        raise TypeError(
+            "total covariant derivative of types other than scalar or cotangent fields are currently not supported"
+        )
+
     @abstractmethod
     def exp(self, p: Point | torch.Tensor, v: Vec, method: ExpMapMethod | None = None) -> Tuple[Point, BundleCurve]:
         Point[self.bundle.base].validate_point(p)
