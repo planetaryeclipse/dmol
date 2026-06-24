@@ -6,6 +6,7 @@ from scipy.integrate import solve_ivp, solve_bvp
 
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.tensor import Vec
+from dmol.diff_mfld.curve import Curve
 from dmol.diff_mfld.connection.connection import TangentConnection
 
 
@@ -21,9 +22,11 @@ def _exp_map_ivp_fn(t, y: np.ndarray, n: int, coeffs_fn: Callable[[np.ndarray], 
 
 def ivp_exp_map[M: Manifold](
     p: Point[M] | torch.Tensor, v: Vec[M], conn: TangentConnection[M], method="Radau"
-) -> Point[M]:
+) -> tuple[Point[M], Curve[M]]:
     p = Point[v.bundle.base](p)
     Vec[v.bundle.base].validate_tensor(v)
+
+    n = p.manifold.dim
 
     # numpy is needed for use in scipy methods
     coeffs_np = lambda p: conn._eval(torch.from_numpy(p)).detach().numpy()
@@ -32,10 +35,14 @@ def ivp_exp_map[M: Manifold](
         [0.0, 1.0],
         np.concat((p.p.detach().numpy(), v.components.detach().numpy())),
         method=method,
-        args=(p.manifold.dim, coeffs_np),
+        args=(n, coeffs_np),
     )
 
-    return Point[p.manifold](result.y)
+    t_hist = result.t
+    p_hist = result.y[:n, :]
+    v_hist = result.y[n:, :]
+
+    return Point[p.manifold](result.y), Curve[p.manifold](t_hist, p_hist, v_hist)
 
 
 def _exp_map_ivp_fn_batched(
@@ -83,13 +90,19 @@ def bvp_log_map[M: Manifold](
     coeffs_np = lambda p: conn._eval(torch.from_numpy(p)).detach().numpy()
     coeffs_np_batched = lambda p_batched: _coeffs_np_batched(p_batched, coeffs_np)
 
+    n = p.manifold.dim
+
     # TODO: review tolerance and max nodes for use in solving
     result = solve_bvp(
-        lambda t, y: _exp_map_ivp_fn_batched(t, y, p.manifold.dim, coeffs_np_batched),
-        lambda ya, yb: _exp_map_ivp_bc_fn(ya, yb, p.manifold.dim, p_numpy, q_numpy),
+        lambda t, y: _exp_map_ivp_fn_batched(t, y, n, coeffs_np_batched),
+        lambda ya, yb: _exp_map_ivp_bc_fn(ya, yb, n, p_numpy, q_numpy),
         t_initial_mesh,
         y_initial,
     )
+
+    t_hist = result.x
+    p_hist = result.y[:n, :]
+    v_hist = result.y[n:, :]
 
     if not result.success:
         raise ValueError("failed to find solution to bvp log map")

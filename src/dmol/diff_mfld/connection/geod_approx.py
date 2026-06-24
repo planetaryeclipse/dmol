@@ -9,41 +9,43 @@ from typing import Callable
 # approximation terms
 
 
-def _f1(y: torch.Tensor):
-    return y
+def _f1_geod(v: torch.Tensor):
+    return v
 
 
-def _f2(y: torch.Tensor, conns: torch.Tensor):
-    return -torch.einsum("kij,i,j", conns, y, y)
+def _f2_geod(v: torch.Tensor, conns: torch.Tensor):
+    return -torch.einsum("kij,i,j", conns, v, v)
 
 
-def _f3(y: torch.Tensor, conns: torch.Tensor, conns_partials: torch.Tensor):
-    return (
-        -torch.einsum("kijl,l,i,j->k", conns_partials, y, y, y)
-        + torch.einsum("kij,ist,s,t,j->k", conns, conns, y, y, y)
-        + torch.einsum("kij,i,jst,s,t->k", conns, y, conns, y, y)
+def _f3_geod(v: torch.Tensor, conns: torch.Tensor, conns_partials: torch.Tensor):
+    dot_v = _f2_geod(v, conns)
+    return -(
+        torch.einsum("kijl,l,i,j->k", conns_partials, v, v, v)
+        + torch.einsum("kij,i,j->k", conns, dot_v, v)
+        + torch.einsum("kij,i,j->k", conns, v, dot_v)
     )
 
 
-def _f4(y: torch.Tensor, conns: torch.Tensor, conns_partials: torch.Tensor, conns_sec_partials: torch.Tensor):
+def _f4_geod(v: torch.Tensor, conns: torch.Tensor, conns_partials: torch.Tensor, conns_sec_partials: torch.Tensor):
+    dot_v = _f2_geod(v, conns)
     return (
-        # deriv. of first term
-        -torch.einsum("kijlr,r,l,i,j->k", conns_sec_partials, y, y, y, y)
-        + torch.einsum("kijl,lst,s,t,i,j->k", conns_partials, conns, y, y, y, y)
-        + torch.einsum("kijl,l,ist,s,t,j->k", conns_partials, y, conns, y, y, y)
-        + torch.einsum("kijl,l,i,ist,s,t->k", conns_partials, y, y, conns, y, y)
-        # deriv. of second term
-        + torch.einsum("kijl,l,ist,s,t,j->k", conns_partials, y, conns, y, y, y)
-        + torch.einsum("kij,istl,l,s,t,j->k", conns, conns_partials, y, y, y, y)
-        - torch.einsum("kij,ist,suv,u,v,t,j->k", conns, conns, conns, y, y, y, y)
-        - torch.einsum("kij,ist,s,tuv,u,v,j->k", conns, conns, y, conns, y, y, y)
-        - torch.einsum("kij,ist,s,t,juv,u,v->k", conns, conns, y, y, conns, y, y)
-        # deriv. of third term
-        - torch.einsum("kijl,l,i,ist,s,t->k", conns_partials, y, y, conns, y, y)
-        - torch.einsum("kij,iuv,u,v,jst,s,t->k", conns, conns, y, y, conns, y, y)
-        + torch.einsum("kij,i,jstl,l,s,t->k", conns, y, conns_partials, y, y, y)
-        - torch.einsum("kij,i,jst,suv,u,v,t->k", conns, y, conns, conns, y, y, y)
-        - torch.einsum("kij,i,tuv,u,v->k", conns, y, conns, y, y)
+        # first term
+        torch.einsum("kijlr,r,l,i,j->k", conns_sec_partials, v, v, v, v)
+        + torch.einsum("kijl,l,i,j->k", conns_partials, dot_v, v, v)
+        + torch.einsum("kijl,l,i,j->k", conns_partials, v, dot_v, v)
+        + torch.einsum("kijl,l,i,j->k", conns_partials, v, v, dot_v)
+        # second term
+        + torch.einsum("kijl,l,ist,s,t,j->k", conns_partials, v, conns_partials, v, v, v)
+        + torch.einsum("kij,istl,l,s,t,j->k", conns, conns_partials, v, v, v, v)
+        + torch.einsum("kij,ist,s,t,j->k", conns, conns, dot_v, v, v)
+        + torch.einsum("kij,ist,s,t,j->k", conns, conns, v, dot_v, v)
+        + torch.einsum("kij,ist,s,t,j->k", conns, conns, v, v, dot_v)
+        # third term
+        + torch.einsum("kijl,l,i,jst,s,t->k", conns_partials, v, v, conns, v, v)
+        + torch.einsum("kij,i,jst,s,t->k", conns, dot_v, conns, v, v)
+        + torch.einsum("kij,i,jstl,l,s,t->k", conns, v, conns_partials, v, v, v)
+        + torch.einsum("kij,i,jst,s,t->k", conns, v, conns, dot_v, v)
+        + torch.einsum("kij,i,jst,s,t->k", conns, v, conns, v, dot_v)
     )
 
 
@@ -61,29 +63,33 @@ def approx_exp_map[M: Manifold](
 
     # implemented in each separate case for readability purposes
     if approx_order == 1:
-        q = p_tens + _f1(v_tens)
+        q = p_tens + _f1_geod(v_tens)
         pass
     elif approx_order == 2:
         conns = conn.coeffs(p)
-        q = p_tens + _f1(v_tens) + 1.0 / 2.0 * _f2(v_tens, conns)
+        q = p_tens + _f1_geod(v_tens) + 1.0 / 2.0 * _f2_geod(v_tens, conns)
     elif approx_order == 3:
         conns = conn.coeffs(p)
         conns_partials = conn.partials(p, 1)
-        q = p_tens + _f1(v_tens) + 1.0 / 2.0 * _f2(v_tens, conns) + 1.0 / 6.0 * _f3(v_tens, conns, conns_partials)
+        q = (
+            p_tens
+            + _f1_geod(v_tens)
+            + 1.0 / 2.0 * _f2_geod(v_tens, conns)
+            + 1.0 / 6.0 * _f3_geod(v_tens, conns, conns_partials)
+        )
     elif approx_order == 4:
         conns = conn.coeffs(p)
         conns_partials = conn.partials(p, 1)
         conns_sec_partials = conn.partials(p, 2)
         q = (
             p_tens
-            + _f1(v_tens)
-            + 0.5 * _f2(v_tens, conns)
-            + 1 / 6.0 * _f3(v_tens, conns, conns_partials)
-            + 1 / 24.0 * _f4(v_tens, conns, conns_partials, conns_sec_partials)
+            + _f1_geod(v_tens)
+            + 0.5 * _f2_geod(v_tens, conns)
+            + 1 / 6.0 * _f3_geod(v_tens, conns, conns_partials)
+            + 1 / 24.0 * _f4_geod(v_tens, conns, conns_partials, conns_sec_partials)
         )
     else:
         raise NotImplementedError()
-
     return Point[v.bundle](q)
 
 
@@ -106,7 +112,7 @@ def _approx_log_fp_iter(
 
 def approx_log_map[M: Manifold](
     p: Point[M] | torch.Tensor, q: Point[M] | torch.Tensor, conn: TangentConnection[M], approx_order=1
-):
+) -> Vec[M]:
     p = Point[conn.bundle.base](p)
     q = Point[conn.bundle.base](q)
 
@@ -117,12 +123,13 @@ def approx_log_map[M: Manifold](
         v = _approx_log_o1(q_tens, p_tens)
     elif approx_order == 2:
         conns = conn.coeffs(p)
-        v = _approx_log_fp_iter(lambda v: q_tens - p_tens - 1.0 / 2.0 * _f2(v, conns), v0)
+        v = _approx_log_fp_iter(lambda v: q_tens - p_tens - 1.0 / 2.0 * _f2_geod(v, conns), v0)
     elif approx_order == 3:
         conns = conn.coeffs(p)
         conns_partials = conn.partials(p, 1)
         v = _approx_log_fp_iter(
-            lambda v: q_tens - p_tens - 1.0 / 2.0 * _f2(v, conns) - 1.0 / 6.0 * _f3(v, conns, conns_partials), v0
+            lambda v: q_tens - p_tens - 1.0 / 2.0 * _f2_geod(v, conns) - 1.0 / 6.0 * _f3_geod(v, conns, conns_partials),
+            v0,
         )
     elif approx_order == 4:
         conns = conn.coeffs(p)
@@ -131,9 +138,9 @@ def approx_log_map[M: Manifold](
         v = _approx_log_fp_iter(
             lambda v: q_tens
             - p_tens
-            - 1.0 / 2.0 * _f2(v, conns)
-            - 1.0 / 6.0 * _f3(v, conns, conns_partials)
-            - 1.0 / 24.0 * _f4(v, conns, conns_partials, conns_sec_partials),
+            - 1.0 / 2.0 * _f2_geod(v, conns)
+            - 1.0 / 6.0 * _f3_geod(v, conns, conns_partials)
+            - 1.0 / 24.0 * _f4_geod(v, conns, conns_partials, conns_sec_partials),
             v0,
         )
     else:

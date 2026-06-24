@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Tuple, Union, Callable
 
 from dmol.diff_mfld.mfld import Manifold, Point
+from dmol.diff_mfld.curve import Curve
 from dmol.diff_mfld.util import PartialSpec, DerivedPartialSpec, classproperty
 from dmol.diff_mfld.bundle.vector_bundle import TangentBundle, ScalarBundle, CotangentBundle, TensorBundle
 from dmol.diff_mfld.bundle.tensor import Tensor, Vec, _bundles_compatible
@@ -16,56 +17,6 @@ from dmol.diff_mfld.bundle.vector_bundle import (
     TensorProductBundle,
     TangentBundle,
 )
-
-
-class BundleCurve(metaclass=PartialSpec):
-    _bundle: type[VectorBundle]
-
-    def __class_getitem__(cls, args):
-        bundle: type[VectorBundle] = args
-
-        namespace = {"_bundle": bundle}
-        if bundle.incomplete:
-            namespace.update({"__class_getitem__": cls._spec_incomplete_base})
-
-        return DerivedPartialSpec(
-            f"BundleCurve[{bundle.__name__}]",
-            (BundleCurve,),
-            namespace,
-        )
-
-    @classmethod
-    def _spec_incomplete_base(cls, args):
-        underlying_manifold: type[Manifold] = args
-
-        upd_bundle = cls._bundle[underlying_manifold]
-        namespace: dict[str, object] = {"_bundle": upd_bundle}
-
-        if upd_bundle.incomplete:
-            namespace.update({"__class_getitem__": cls._spec_incomplete_base})
-
-        return DerivedPartialSpec(
-            f"BundleCurve[{upd_bundle.__name__}]",
-            (BundleCurve,),
-            namespace,
-        )
-
-    def __init__(self, t: torch.Tensor, coords: torch.Tensor, derivs: Tuple[torch.Tensor, ...]):
-        self._t = t
-        self._coords = coords
-        self._derivs = derivs
-
-    @property
-    def t(self):
-        return self._t
-
-    @property
-    def coords(self):
-        return self._coords
-
-    @property
-    def derivs(self):
-        return self._derivs
 
 
 class ExpMapMethod:
@@ -250,9 +201,10 @@ class TangentConnection(Connection[TangentBundle]):
         )
 
     @abstractmethod
-    def exp(self, p: Point | torch.Tensor, v: Vec, method: ExpMapMethod | None = None) -> Tuple[Point, BundleCurve]:
+    def exp(self, p: Point | torch.Tensor, v: Vec, method: ExpMapMethod | None = None) -> Tuple[Point, Curve]:
         Point[self.bundle.base].validate_point(p)
         Tensor[self.bundle].validate_tensor(v)
+        raise NotImplementedError()
 
     @abstractmethod
     def log(
@@ -260,10 +212,12 @@ class TangentConnection(Connection[TangentBundle]):
         p: Point | torch.Tensor,
         q: Point | torch.Tensor,
         method: LogMapMethod | None = None,
-    ) -> Tuple[Vec, BundleCurve]:
+    ) -> Tuple[Vec, Curve]:
         Point[self.bundle.base].validate_point(p)
         Point[self.bundle.base].validate_point(q)
+        raise NotImplementedError()
 
     @abstractmethod
-    def pt_vec(self, v: Vec, curve: BundleCurve, method: ParallelTranspVecMethod | None = None) -> Vec:
+    def pt_vec(self, v: Vec, curve: Curve, method: ParallelTranspVecMethod | None = None) -> Vec:
         Tensor[self.bundle].validate_tensor(v)
+        raise NotImplementedError()
