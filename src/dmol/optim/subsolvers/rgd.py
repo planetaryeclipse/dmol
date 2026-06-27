@@ -1,116 +1,90 @@
 import torch
 
 from dataclasses import dataclass
+from typing import Any, Callable
 
-from dmol.diff_mfld.funcs import MfldFunc, FuncArgs
-from dmol.diff_mfld.mfld import ComputeMfld
-from dmol.optim.results import SubsolverCfg, SubsolverCriterion
-
-from dmol.optim.results import CustomSubsolverResult, SubsolverHistory, SubsolverResult
-
-
-@dataclass
-class RiemGradDescentCfg(SubsolverCfg):
-    damp: float = 0.3
-    criterion_mode: SubsolverCriterion = SubsolverCriterion.DISTANCE
-    criterion_eps: float = 1e-3
-    max_iters: int = 1000
+from dmol.diff_mfld.mfld import Manifold, Point
+from dmol.diff_mfld.bundle.vector_bundle import ScalarBundle
+from dmol.diff_mfld.bundle.field import Field, ScalarField, fields_compatible
+from dmol.diff_mfld.bundle.tensor import Vec, Scalar
+from dmol.diff_mfld.riemann import Metric, MetricField, TangentConnection
 
 
 @dataclass
-class RiemGradDescentHistory:
-    p_hist: torch.Tensor
-    f_hist: torch.Tensor
-
-
-@dataclass
-class RiemGradDescentResult(CustomSubsolverResult):
+class UnconstrResult[M: Manifold]:
     success: bool
-    p: torch.Tensor
-    iters: int
-    history: RiemGradDescentHistory
-
-    @property
-    def result(self) -> SubsolverResult:
-        return SubsolverResult(
-            success=self.success,
-            p=self.p,
-            iters=self.iters,
-            history=SubsolverHistory(
-                p_hist=self.history.p_hist,
-                f_hist=self.history.f_hist,
-            ),
-        )
+    num_iters: int
+    p: Point[M]
+    f: Scalar[M]
+    f_hist: torch.Tensor | None = None
+    p_hist: torch.Tensor | None = None
 
 
-def riem_grad_descent(
-    f: MfldFunc,
-    p0: torch.Tensor,
-    mfld: ComputeMfld,
-    cfg: RiemGradDescentCfg,
-    *args: *FuncArgs,
-):
-    p_prev = None  # track this value to utilize convergence criterions
-    p: torch.Tensor = (
-        p0.detach().clone()
-    )  # cloned so can be modified without changing p_prev (when assigned)
+def rgd[M: Manifold](
+    f: Field[M],
+    p0: Point[M] | torch.Tensor,
+    metric: MetricField[M],
+    conn: TangentConnection[M] | None = None,
+    retr: Callable[[Point[M], Vec[M]], Point[M]] | None = None,
+    damp: float = 0.1,
+    tol: float = 1e-3,
+    max_iters: int = 1000,
+    save_hist: bool = False,
+) -> UnconstrResult:
+    print(f.bundle)
 
-    p_hist = []
-    f_hist = []
+    if not fields_compatible(f, ScalarField[f.bundle.base]):
+        raise ValueError("f must be a scalar field")
 
-    # print(f"(rgd) p0: {p0}")
+    if conn is None:
+        conn = metric.levi_civita()
+    if retr is None:
+        # sets the retraction as the exponential map (ignore curve ouput)
+        retr = lambda p, v: conn.exp(p, v)[0]
+    f_diff = conn.total_covar(f)
 
-    for idx in range(cfg.max_iters):
-        df = f.diff(p, mfld, *args)  # cotangent space
-        grad_f = mfld.mfld.metric(p).sharp(df)  # tangent space
+    p = Point[f.bundle.base](p0)
+    f_val = f(p)
 
-        p = mfld.exp(p, -cfg.damp * grad_f)
+    print(f"initial: p={p.p}, f={f_val.components}, f_diff={f_diff(p).components}")
 
-        # print(f"(rgd) p: {p}")
+    f_hist = [f] if save_hist else None
+    p_hist = [p] if save_hist else None
 
-        # update the histories
-        p_hist.append(p)
-        f_hist.append(f.value(p, mfld, *args).item())
+    success = False
+    i: int = 0
+    for i in range(max_iters):
+        if success:
+            break
 
-        if p_prev is not None:
-            if cfg.criterion_mode == SubsolverCriterion.DISTANCE:
-                dist = mfld.dist(p_prev, p)
-                if dist < cfg.criterion_eps:
-                    return RiemGradDescentResult(
-                        success=True,
-                        p=p,
-                        iters=idx + 1,
-                        history=RiemGradDescentHistory(
-                            p_hist=torch.stack(p_hist),
-                            f_hist=torch.tensor(f_hist),
-                        ),
-                    )
-            elif cfg.criterion_mode == SubsolverCriterion.NORM:
-                # computes the norm of the gradient of the function
-                f_diff = f.diff(p, mfld, *args)
-                metric = mfld.mfld.metric(p)
-                f_grad = metric.sharp(f_diff)
-                f_grad_norm = metric(f_grad, f_grad)
+        metric_tensor: Metric[M] = metric(p)  # type: ignore
+        f_grad = metric_tensor.sharp(f_diff(p))
 
-                # print(f"f_grad_norm: {f_grad_norm}, criterion: {cfg.criterion_eps}")
-                if f_grad_norm <= cfg.criterion_eps:
-                    return RiemGradDescentResult(
-                        success=True,
-                        p=p,
-                        iters=idx + 1,
-                        history=RiemGradDescentHistory(
-                            p_hist=torch.stack(p_hist),
-                            f_hist=torch.tensor(f_hist),
-                        ),
-                    )
+        p_next, _ = conn.exp(p, -damp * f_grad)
+        f_val_next = f(p)
 
-        p_prev = p.clone()  # otherwise if we modify p then p_prev is changed
-    return RiemGradDescentResult(
-        success=False,
-        p=p,
-        iters=cfg.max_iters,
-        history=RiemGradDescentHistory(
-            p_hist=torch.stack(p_hist),
-            f_hist=torch.tensor(f_hist),
-        ),
-    )
+        print(f"p={p_next.p}, f={f_val_next.components}, f_grad={f_grad.components}")
+
+        if torch.linalg.norm(p_next.p - p.p, ord=torch.inf) <= tol:
+            success = True
+
+        p = p_next
+        f_val = f_val_next
+
+        # record the current step cost and position if enabled
+        if save_hist:
+            f_hist.append(f_val)  # type: ignore
+            p_hist.append(p.p)  # type: ignore
+
+    result = UnconstrResult(success=success, p=p, f=f_val, num_iters=i)
+    if save_hist:
+        num_samples = len(f_hist)  # type: ignore
+        f_hist_tens = torch.zeros((num_samples,))
+        p_hist_tens = torch.zeros((f.bundle.base.dim, num_samples))
+        for i in range(num_samples):
+            f_hist_tens[i] = f_hist[i]  # type: ignore
+            p_hist_tens[i, :] = p_hist[i]  # type: ignore
+
+        result.f_hist = f_hist_tens
+        result.p_hist = p_hist_tens
+    return result

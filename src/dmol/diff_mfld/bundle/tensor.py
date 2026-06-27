@@ -5,6 +5,7 @@ from typing import Tuple
 from dmol.diff_mfld.util import classproperty, PartialSpec, DerivedPartialSpec, specs_match, specifications
 from dmol.diff_mfld.mfld import Manifold
 from dmol.diff_mfld.bundle.vector_bundle import (
+    ScalarBundle,
     VectorBundle,
     TangentBundle,
     CotangentBundle,
@@ -164,6 +165,7 @@ class Tensor(metaclass=PartialSpec):
         return self.__mul__(other)
 
 
+Scalar = Tensor[ScalarBundle]
 Vec = Tensor[TangentBundle]
 Cov = Tensor[CotangentBundle]
 
