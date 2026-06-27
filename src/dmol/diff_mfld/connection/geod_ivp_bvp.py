@@ -7,7 +7,8 @@ from scipy.integrate import solve_ivp, solve_bvp
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.tensor import Vec
 from dmol.diff_mfld.curve import Curve
-from dmol.diff_mfld.connection.connection import TangentConnection
+
+import dmol.diff_mfld.connection.connection as conn
 
 
 def _exp_map_ivp_fn(t, y: np.ndarray, n: int, coeffs_fn: Callable[[np.ndarray], np.ndarray]) -> np.ndarray:
@@ -21,7 +22,7 @@ def _exp_map_ivp_fn(t, y: np.ndarray, n: int, coeffs_fn: Callable[[np.ndarray], 
 
 
 def ivp_exp_map[M: Manifold](
-    p: Point[M] | torch.Tensor, v: Vec[M], conn: TangentConnection[M], method="Radau"
+    p: Point[M] | torch.Tensor, v: Vec[M], conn: conn.TangentConnection[M], method="Radau"
 ) -> tuple[Point[M], Curve[M]]:
     p = Point[v.bundle.base](p)
     Vec[v.bundle.base].validate_tensor(v)
@@ -35,14 +36,18 @@ def ivp_exp_map[M: Manifold](
         [0.0, 1.0],
         np.concat((p.p.detach().numpy(), v.components.detach().numpy())),
         method=method,
+        dense_output=True,
         args=(n, coeffs_np),
     )
 
+    q = result.y[:n, -1]
     t_hist = result.t
     p_hist = result.y[:n, :]
     v_hist = result.y[n:, :]
 
-    return Point[p.manifold](result.y), Curve[p.manifold](t_hist, p_hist, v_hist)
+    point = Point[p.manifold](torch.from_numpy(q))
+    curve = Curve[p.manifold](t_hist, p_hist, v_hist)
+    return point, curve
 
 
 def _exp_map_ivp_fn_batched(
@@ -69,23 +74,24 @@ def _exp_map_ivp_bc_fn(
 
 
 def _coeffs_np_batched(p_batched: np.ndarray, coeffs_np: Callable[[np.ndarray], np.ndarray]):
-    p_indiv = [p_batched[:, :, :, i] for i in range(p_batched.shape[3])]
-    conns_indiv = [coeffs_np(p) for p in p_indiv]
+    p_indiv = [p_batched[:, i] for i in range(p_batched.shape[1])]
+    conns_indiv = [coeffs_np(p)[:, :, :, np.newaxis] for p in p_indiv]
     return np.concat(conns_indiv, axis=3)
 
 
 def bvp_log_map[M: Manifold](
-    p: Point[M] | torch.Tensor, q: Point[M] | torch.Tensor, conn: TangentConnection[M]
-) -> Vec[M]:
+    p: Point[M] | torch.Tensor, q: Point[M] | torch.Tensor, conn: conn.TangentConnection[M]
+) -> tuple[Vec[M], Curve[M]]:
     p = Point[conn.bundle.base](p)
     q = Point[conn.bundle.base](q)
 
     p_numpy, q_numpy = p.p.detach().numpy(), q.p.detach().numpy()
 
     t_initial_mesh = np.linspace(0.0, 1.0)
-    p_initial = np.linspace(p_numpy, q_numpy)
-    v_initial = np.tile(np.reshape(q_numpy - p_numpy, (len(q_numpy), 1)), (1, len(t_initial_mesh)))
-    y_initial = np.concat((p_initial, v_initial))
+
+    p_initial = np.linspace(p_numpy, q_numpy).T
+    v_initial = np.tile(q_numpy - p_numpy, (len(t_initial_mesh), 1)).T
+    y_initial = np.vstack((p_initial, v_initial))
 
     coeffs_np = lambda p: conn._eval(torch.from_numpy(p)).detach().numpy()
     coeffs_np_batched = lambda p_batched: _coeffs_np_batched(p_batched, coeffs_np)
@@ -106,4 +112,7 @@ def bvp_log_map[M: Manifold](
 
     if not result.success:
         raise ValueError("failed to find solution to bvp log map")
-    return Vec[conn.bundle.base](result.y[n:, 0])
+
+    vec = Vec[conn.bundle.base](torch.from_numpy(result.y[n:, 0]))
+    curve = Curve[conn.bundle.base](t_hist, p_hist, v_hist)
+    return vec, curve

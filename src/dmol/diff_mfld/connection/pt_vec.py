@@ -4,13 +4,13 @@ import torch
 from typing import Callable
 from scipy.integrate import solve_ivp
 
-from dmol.diff_mfld.mfld import Manifold
+from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.tensor import Vec
-from dmol.diff_mfld.connection.connection import TangentConnection
-
 from dmol.diff_mfld.curve import Curve
 
 from dmol.diff_mfld.connection.geod_approx import _f2_geod, _f3_geod, _f4_geod
+
+import dmol.diff_mfld.connection.connection as conn
 
 
 def _pt_vec_ivp_fn(
@@ -34,19 +34,20 @@ def _get_numpy_pos_vel_from_curve(t, curve: Curve) -> tuple[np.ndarray, np.ndarr
     return p_numpy, v_numpy
 
 
-def ivp_pt_vec[M: Manifold](u: Vec[M], curve: Curve[M], conn: TangentConnection[M], method="Radau") -> Vec[M]:
+def ivp_pt_vec[M: Manifold](u: Vec[M], curve: Curve[M], conn: conn.TangentConnection[M], method="Radau") -> Vec[M]:
     # numpy is needed for use in scipy methods
     coeffs_np = lambda p: conn._eval(torch.from_numpy(p)).detach().numpy()
     curve_fn = lambda t: _get_numpy_pos_vel_from_curve(t, curve=curve)
     result = solve_ivp(
         _pt_vec_ivp_fn,
         curve.interval,
-        u,
+        u.components.detach().numpy(),
         method=method,
         args=(coeffs_np, curve_fn),
     )
 
-    return Vec[u.bundle.base](result.y)
+    w = result.y[:, -1]
+    return Vec[u.bundle.base](torch.from_numpy(w))
 
 
 # approximate methods
@@ -165,8 +166,9 @@ def _f4_pt_vec(
     )
 
 
-def approx_pt_vec[M: Manifold](u: Vec[M], curve: Curve[M], conn: TangentConnection[M], approx_order=1) -> Vec[M]:
-    p, v = curve.initial
+def approx_pt_vec[M: Manifold](
+    u: Vec[M], p: Point[M], v: Vec[M], conn: conn.TangentConnection[M], approx_order=1
+) -> Vec[M]:
     v_tens = v.components.detach()
     u_tens = u.components.detach()
 
@@ -201,5 +203,4 @@ def approx_pt_vec[M: Manifold](u: Vec[M], curve: Curve[M], conn: TangentConnecti
         )
     else:
         raise NotImplementedError()
-
     return Vec[conn.bundle.base](w)

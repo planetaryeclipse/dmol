@@ -29,9 +29,17 @@ class Curve(metaclass=PartialSpec):
         if t < min_time or t > max_time:
             raise ValueError(f"time {t} is outside of curve interval [{min_time}, {max_time}]")
 
-        p = np.interp(t, self._t_hist, self._p_hist)
-        v = np.interp(t, self._t_hist, self._v_hist)
-        return (Point[self._manifold](torch.from_numpy(p)), Vec[self._manifold](torch.from_numpy(v)))
+        n = self.manifold.dim
+        p = np.zeros((n,))
+        v = np.zeros((n,))
+
+        for i in range(n):
+            p[i] = np.interp(t, self._t_hist, self._p_hist[i, :])
+            v[i] = np.interp(t, self._t_hist, self._v_hist[i, :])
+
+        point = Point[self._manifold](torch.from_numpy(p))
+        vec = Vec[self._manifold](torch.from_numpy(v))
+        return point, vec
 
     @property
     def initial(self) -> tuple[Point, Vec]:
@@ -40,7 +48,7 @@ class Curve(metaclass=PartialSpec):
 
     @property
     def interval(self) -> tuple[float, float]:
-        return self._t_hist[0], self._t_hist[-2]
+        return self._t_hist[0], self._t_hist[-1]
 
     @classproperty
     def manifold(cls):

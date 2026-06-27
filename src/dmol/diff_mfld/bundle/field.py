@@ -109,6 +109,10 @@ class Field(metaclass=PartialSpec):
         return _shared_field_mul(lhs, rhs)
 
 
+def fields_compatible(f1: Field, f2: type[Field]) -> bool:
+    return _bundles_compatible(f1.bundle, f2.bundle)
+
+
 def _shared_field_mul(lhs: Field | float, rhs: Field | float):
     if isinstance(lhs, Field) and isinstance(rhs, Field):
         scalar_bundle = ScalarBundle[lhs.bundle.base]

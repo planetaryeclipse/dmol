@@ -88,7 +88,11 @@ class Point(metaclass=PartialSpec):
             if not specs_match(cls, type(p)):
                 raise ValueError(f"manifold of typed point {p.manifold} does not match class manifold {cls.manifold}")
         elif isinstance(p, torch.Tensor):
-            if not (len(p.shape) == 1 and p.shape[0] == cls.manifold.dim):
-                raise ValueError("provided coords must be a 1D vector with components equal to manifold dimension")
+            if len(p.shape) != 1:
+                raise ValueError("provided coords must be a 1D vector")
+            elif p.shape[0] != cls.manifold.dim:
+                raise ValueError(
+                    "provided coords must have the same number of components equal to the manifold dimension"
+                )
         else:
             raise ValueError("instance must either be a point of the same manifold or a compatible 1D array")
