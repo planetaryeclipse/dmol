@@ -91,6 +91,9 @@ class Point(metaclass=PartialSpec):
             if len(p.shape) != 1:
                 raise ValueError("provided coords must be a 1D vector")
             elif p.shape[0] != cls.manifold.dim:
+
+                print(p.shape)
+
                 raise ValueError(
                     "provided coords must have the same number of components equal to the manifold dimension"
                 )

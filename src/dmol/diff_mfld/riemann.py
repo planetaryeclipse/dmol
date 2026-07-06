@@ -1,11 +1,11 @@
 import torch
 
-from typing import Union, Callable, override
+from typing import Union, Callable, override, Self
 
-from dmol.diff_mfld.mfld import Point
+from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.tensor import Tensor, Cov, Vec, check_tensor_type
 from dmol.diff_mfld.bundle.vector_bundle import TensorBundle
-from dmol.diff_mfld.bundle.field import Field, LambdaField
+from dmol.diff_mfld.field.field import Field, LambdaField, VectorField, CovectorField, ScalarField
 from dmol.diff_mfld.connection.connection import TangentConnection
 
 
@@ -62,6 +62,11 @@ class LeviCivitaConnection(TangentConnection):
         scalar = torch.einsum("ij,ij", metric.inv, self.ricci(p).components)
         return scalar.item()
 
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, LeviCivitaConnection):
+            raise ValueError()
+        return self._metric_field is value._metric_field
+
 
 class Metric(Tensor[TensorBundle[0, 2]]):
     def __init__(self, components: torch.Tensor):
@@ -109,3 +114,29 @@ class EuclideanMetricField(MetricField):
     @override
     def _eval(self, p: torch.Tensor):
         return torch.eye(self.tensor.bundle.base.dim)
+
+
+# TODO: refactor this operation into a general dual index contraction operation but will work for optimization for now
+class _MetricFlat(CovectorField):
+    def __init__(self, metric: MetricField, vf: VectorField):
+        super().__init__()
+        self._metric = metric
+        self._vf = vf
+
+    @override
+    def _eval(self, p: torch.Tensor) -> torch.Tensor:
+        metric = self._metric._eval(p)  # avoid computing inverse
+        vec = self._vf._eval(p)
+
+        cov = metric @ vec
+        return cov
+
+    @override
+    def _eval_partials(self, p: torch.Tensor) -> torch.Tensor:
+        metric = self._metric._eval(p)
+        metric_partials = self._metric._eval_partials(p)
+
+        vec = self._vf._eval(p)
+        vec_partials = self._vf._eval_partials(p)
+
+        return torch.einsum("ijk,j->ik", metric_partials, vec) + torch.einsum("ij,jk->ik", metric, vec_partials)

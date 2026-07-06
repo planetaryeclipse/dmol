@@ -8,7 +8,7 @@ from torch.testing import assert_close
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.tensor import Vec
 from dmol.diff_mfld.bundle.vector_bundle import ScalarBundle
-from dmol.diff_mfld.bundle.field import LambdaField, coord_repr
+from dmol.diff_mfld.field.field import LambdaField, coord_repr
 from dmol.diff_mfld.riemann import EuclideanMetricField, MetricLambdaField
 
 from dmol.diff_mfld.connection.geod_approx import approx_exp_map, approx_log_map

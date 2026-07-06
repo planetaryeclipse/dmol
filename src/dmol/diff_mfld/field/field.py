@@ -5,7 +5,7 @@ from abc import abstractmethod
 from inspect import signature
 from typing import Union, Self, override, Callable, Sequence
 
-from dmol.diff_mfld.util import PartialSpec, DerivedPartialSpec, classproperty
+from dmol.diff_mfld.util import PartialSpec, DerivedPartialSpec, classproperty, specs_match
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.vector_bundle import (
     ScalarBundle,
@@ -87,6 +87,13 @@ class Field(metaclass=PartialSpec):
         # NOTE: default behavior assumes that the eval mapping is continuous, must override if discrete or approximate
         partials = jacrev(self._eval)(p)
         return partials
+
+    @classmethod
+    def validate_field(cls, f: Field):
+        if cls.incomplete:
+            raise TypeError("field type must be fully specialized to validate instances")
+        elif not specs_match(cls, type(f)):
+            raise ValueError(f"instance with tensor {f.tensor} must match tensor {cls.tensor}")
 
     def __add__(self, other):
         if isinstance(other, Field):
@@ -236,7 +243,7 @@ def coord_repr(
         return mat
 
 
-def test_field_expr_callable_for_gradient(
+def check_field_expr_callable_for_gradient(
     fn: Callable[[*tuple[torch.Tensor, ...]], torch.Tensor],
     coord_dim: int,
     single_arg=False,

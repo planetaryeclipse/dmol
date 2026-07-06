@@ -104,6 +104,8 @@ def bvp_log_map[M: Manifold](
         lambda ya, yb: _exp_map_ivp_bc_fn(ya, yb, n, p_numpy, q_numpy),
         t_initial_mesh,
         y_initial,
+        # tol=1e-7,
+        # max_nodes=3000,
     )
 
     t_hist = result.x

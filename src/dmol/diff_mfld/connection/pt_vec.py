@@ -57,10 +57,14 @@ def _f1_pt_vec(v: torch.Tensor, u: torch.Tensor, conns: torch.Tensor) -> torch.T
     return -torch.einsum("i,j,kij->k", v, u, conns)
 
 
-def _f2_pt_vec(v: torch.Tensor, u: torch.Tensor, conns: torch.Tensor, conns_partials: torch.Tensor) -> torch.Tensor:
-    dot_v = _f2_geod(v, conns)
-    dot_u = _f1_pt_vec(v, u, conns)
-
+def _f2_pt_vec(
+    v: torch.Tensor,
+    dot_v: torch.Tensor,
+    u: torch.Tensor,
+    dot_u: torch.Tensor,
+    conns: torch.Tensor,
+    conns_partials: torch.Tensor,
+) -> torch.Tensor:
     return -(
         torch.einsum("i,j,kij->k", dot_v, u, conns)
         + torch.einsum("i,j,kij->k", v, dot_u, conns)
@@ -70,17 +74,15 @@ def _f2_pt_vec(v: torch.Tensor, u: torch.Tensor, conns: torch.Tensor, conns_part
 
 def _f3_pt_vec(
     v: torch.Tensor,
+    dot_v: torch.Tensor,
+    dot_dot_v: torch.Tensor,
     u: torch.Tensor,
+    dot_u: torch.Tensor,
+    dot_dot_u: torch.Tensor,
     conns: torch.Tensor,
     conns_partials: torch.Tensor,
     conns_sec_partials: torch.Tensor,
 ) -> torch.Tensor:
-    dot_v = _f2_geod(v, conns)
-    dot_dot_v = _f3_geod(v, conns, conns_partials)
-
-    dot_u = _f1_pt_vec(v, u, conns)
-    dot_dot_u = _f2_pt_vec(v, u, conns, conns_partials)
-
     return -(
         # first term
         torch.einsum("i,j,kij->k", dot_dot_v, u, conns)
@@ -100,21 +102,18 @@ def _f3_pt_vec(
 
 def _f4_pt_vec(
     v: torch.Tensor,
+    dot_v: torch.Tensor,
+    dot_dot_v: torch.Tensor,
+    dot_dot_dot_v: torch.Tensor,
     u: torch.Tensor,
+    dot_u: torch.Tensor,
+    dot_dot_u: torch.Tensor,
+    dot_dot_dot_u: torch.Tensor,
     conns: torch.Tensor,
     conns_partials: torch.Tensor,
     conns_sec_partials: torch.Tensor,
     conns_thd_partials: torch.Tensor,
 ) -> torch.Tensor:
-    dot_v = _f2_geod(v, conns)
-    dot_dot_v = _f3_geod(v, conns, conns_partials)
-    dot_dot_dot_v = _f4_geod(v, conns, conns_partials, conns_sec_partials)
-
-    dot_u = _f1_pt_vec(v, u, conns)
-    dot_dot_u = _f2_pt_vec(v, u, conns, conns_partials)
-    dot_dot_dot_u = _f3_pt_vec(v, u, conns, conns_partials, conns_sec_partials)
-
-    # first term
     return -(
         # first term
         torch.einsum("i,j,kij->k", dot_dot_dot_v, u, conns)
@@ -167,40 +166,81 @@ def _f4_pt_vec(
 
 
 def approx_pt_vec[M: Manifold](
-    u: Vec[M], p: Point[M], v: Vec[M], conn: conn.TangentConnection[M], approx_order=1
+    u: Vec[M], p: Point[M] | torch.Tensor, v: Vec[M], conn: conn.TangentConnection[M], approx_order=1
 ) -> Vec[M]:
+    Vec[conn.bundle.base].validate_tensor(u)
+    Vec[conn.bundle.base].validate_tensor(v)
+    p = Point[conn.bundle.base](p)
+
+    if approx_order < 1:
+        raise ValueError("approximate order must be at least 1")
+
     v_tens = v.components.detach()
     u_tens = u.components.detach()
 
     # implemented in each separate case for readability purposes
     if approx_order == 1:
         conns = conn.coeffs(p)
-        w = u_tens + _f1_pt_vec(v_tens, u_tens, conns)
+
+        dot_u = _f1_pt_vec(v_tens, u_tens, conns)
+
+        w = u_tens + dot_u
     elif approx_order == 2:
         conns = conn.coeffs(p)
         conns_partials = conn.partials(p, 1)
-        w = u_tens + _f1_pt_vec(v_tens, u_tens, conns) + 1.0 / 2.0 * _f2_pt_vec(v_tens, u_tens, conns, conns_partials)
+
+        dot_v = _f2_geod(v_tens, conns)
+
+        dot_u = _f1_pt_vec(v_tens, u_tens, conns)
+        dot_dot_u = _f2_pt_vec(v_tens, dot_v, u_tens, dot_u, conns, conns_partials)
+
+        w = u_tens + dot_u + 1.0 / 2.0 * dot_dot_u
     elif approx_order == 3:
         conns = conn.coeffs(p)
         conns_partials = conn.partials(p, 1)
-        conns_seq_partials = conn.partials(p, 2)
-        w = (
-            u_tens
-            + _f1_pt_vec(v_tens, u_tens, conns)
-            + 1.0 / 2.0 * _f2_pt_vec(v_tens, u_tens, conns, conns_partials)
-            + 1.0 / 6.0 * _f3_pt_vec(v_tens, u_tens, conns, conns_partials, conns_seq_partials)
+        conns_sec_partials = conn.partials(p, 2)
+
+        dot_v = _f2_geod(v_tens, conns)
+        dot_dot_v = _f3_geod(v_tens, dot_v, conns, conns_partials)
+
+        dot_u = _f1_pt_vec(v_tens, u_tens, conns)
+        dot_dot_u = _f2_pt_vec(v_tens, dot_v, u_tens, dot_u, conns, conns_partials)
+        dot_dot_dot_u = _f3_pt_vec(
+            v_tens, dot_v, dot_dot_v, u_tens, dot_u, dot_dot_u, conns, conns_partials, conns_sec_partials
         )
+
+        w = u_tens + dot_u + 1.0 / 2.0 * dot_dot_u + 1.0 / 6.0 * dot_dot_dot_u
     elif approx_order == 4:
         conns = conn.coeffs(p)
         conns_partials = conn.partials(p, 1)
-        conns_seq_partials = conn.partials(p, 2)
+        conns_sec_partials = conn.partials(p, 2)
         conns_thd_partials = conn.partials(p, 3)
-        w = (
-            u_tens
-            + 1.0 / 2.0 * _f2_pt_vec(v_tens, u_tens, conns, conns_partials)
-            + 1.0 / 6.0 * _f3_pt_vec(v_tens, u_tens, conns, conns_partials, conns_seq_partials)
-            + 1.0 / 24.0 * _f4_pt_vec(v_tens, u_tens, conns, conns_partials, conns_seq_partials, conns_thd_partials)
+
+        dot_v = _f2_geod(v_tens, conns)
+        dot_dot_v = _f3_geod(v_tens, dot_v, conns, conns_partials)
+        dot_dot_dot_v = _f4_geod(v_tens, dot_v, dot_dot_v, conns, conns_partials, conns_sec_partials)
+
+        dot_u = _f1_pt_vec(v_tens, u_tens, conns)
+        dot_dot_u = _f2_pt_vec(v_tens, dot_v, u_tens, dot_u, conns, conns_partials)
+        dot_dot_dot_u = _f3_pt_vec(
+            v_tens, dot_v, dot_dot_v, u_tens, dot_u, dot_dot_u, conns, conns_partials, conns_sec_partials
         )
+        dot_dot_dot_dot_u = _f4_pt_vec(
+            v_tens,
+            dot_v,
+            dot_dot_v,
+            dot_dot_dot_v,
+            u_tens,
+            dot_u,
+            dot_dot_u,
+            dot_dot_dot_u,
+            conns,
+            conns_partials,
+            conns_sec_partials,
+            conns_thd_partials,
+        )
+
+        w = u_tens + dot_u + 1.0 / 2.0 * dot_dot_u + 1.0 / 6.0 * dot_dot_dot_u + 1.0 / 24.0 * dot_dot_dot_dot_u
     else:
         raise NotImplementedError()
     return Vec[conn.bundle.base](w)

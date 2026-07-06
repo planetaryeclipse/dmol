@@ -8,7 +8,7 @@ from dmol.diff_mfld.bundle.vector_bundle import (
     ScalarBundle,
     VectorBundle,
 )
-from dmol.diff_mfld.bundle.field import LambdaField, coord_repr, test_field_expr_callable_for_gradient
+from dmol.diff_mfld.field.field import LambdaField, coord_repr, check_field_expr_callable_for_gradient
 from dmol.diff_mfld.riemann import MetricLambdaField, EuclideanMetricField
 
 
@@ -103,9 +103,10 @@ class TestCovarDeriv:
         assert_close(euclid_m(p).components, torch.eye(2))
         assert_close(euclid_conn.coeffs(p), torch.zeros((2, 2, 2)))
 
+    @pytest.mark.filterwarnings("ignore:Converting a tensor with requires_grad=True")
     def test_field_expr_checking(self):
         # using coord_repr preserves the gradient history
-        test_field_expr_callable_for_gradient(
+        check_field_expr_callable_for_gradient(
             lambda x, y: coord_repr([[1.0 + x**2, 0.0], [0.0, 1.0 + y**2]]),  # type: ignore
             coord_dim=2,
             single_arg=False,
@@ -116,7 +117,7 @@ class TestCovarDeriv:
 
         # using torch.tensor() directly breaks the gradient history (use this in implementation-specific tests)
         with pytest.raises(ValueError):
-            test_field_expr_callable_for_gradient(
+            check_field_expr_callable_for_gradient(
                 lambda x, y: torch.tensor([[1.0 + x**2, 0.0], [0.0, 1.0 + y**2]]),  # type: ignore
                 coord_dim=2,
                 single_arg=False,

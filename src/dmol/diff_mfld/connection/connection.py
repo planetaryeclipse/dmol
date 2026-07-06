@@ -11,7 +11,7 @@ from dmol.diff_mfld.curve import Curve
 from dmol.diff_mfld.util import PartialSpec, DerivedPartialSpec, classproperty
 from dmol.diff_mfld.bundle.vector_bundle import TangentBundle, ScalarBundle, CotangentBundle, TensorBundle
 from dmol.diff_mfld.bundle.tensor import Tensor, Vec, _bundles_compatible
-from dmol.diff_mfld.bundle.field import Field, VectorField
+from dmol.diff_mfld.field.field import Field, VectorField
 from dmol.diff_mfld.bundle.vector_bundle import (
     VectorBundle,
     TensorProductBundle,
@@ -125,7 +125,7 @@ class Connection(metaclass=PartialSpec):
     def _eval_partials(self, p: torch.Tensor, order: int) -> torch.Tensor:
         # NOTE: default behavior assumes that the eval mapping is continuous, must override if discrete or approximate
 
-        partials_fn = jacrev(lambda q: self._eval(q))
+        partials_fn = jacrev(self._eval)
         for _ in range(1, order):
             partials_fn = jacrev(partials_fn)
 

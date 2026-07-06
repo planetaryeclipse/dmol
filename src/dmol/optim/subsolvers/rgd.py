@@ -5,7 +5,7 @@ from typing import Any, Callable
 
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.vector_bundle import ScalarBundle
-from dmol.diff_mfld.bundle.field import Field, ScalarField, fields_compatible
+from dmol.diff_mfld.field.field import Field, ScalarField, fields_compatible
 from dmol.diff_mfld.bundle.tensor import Vec, Scalar
 from dmol.diff_mfld.riemann import Metric, MetricField, TangentConnection
 
