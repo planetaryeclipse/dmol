@@ -1,11 +1,12 @@
-from abc import abstractmethod
 from math import prod
-from typing import Tuple, Optional, Any
+from typing import Sequence, Tuple, Optional
 
 from dmol.diff_mfld.mfld import Manifold
 from dmol.diff_mfld.util import (
     classproperty,
     DerivedPartialSpec,
+    specs_match,
+    top_level,
 )
 
 
@@ -14,12 +15,60 @@ def _check_base(base):
         raise TypeError("explicitly provided base type is unable to be none")
     elif not issubclass(base, Manifold):
         raise TypeError()
-    elif base.top_level is VectorBundle and base.dim is None:
+    elif issubclass(base, VectorBundle) and base.dim is None:
         raise TypeError()
-    elif base.top_level is Manifold and base.incomplete:
+    elif not issubclass(base, VectorBundle) and issubclass(base.top_level, Manifold) and base.incomplete:
         raise TypeError()
 
 
+def _are_bundles_equiv(b1: tuple[type[VectorBundle], ...], b2: tuple[type[VectorBundle], ...]):
+    if len(b1) != len(b2):
+        return False
+
+    for first, second in zip(b1, b2):
+        if issubclass(first, TensorProductBundle) or issubclass(second, TensorProductBundle):
+            raise TypeError()  # should be unreachable
+        elif not specs_match(first, second):
+            return False
+    return True
+
+
+def _bundles_compatible(b1: type[VectorBundle], b2: type[VectorBundle]) -> bool:
+    if b1.incomplete or b2.incomplete:
+        raise TypeError(f"bundles {b1} and {b2} must be completely specified")
+
+    if issubclass(b1, TensorProductBundle) and issubclass(b2, TensorProductBundle):
+        b1_bundles, b2_bundles = b1.bundles, b2.bundles
+    elif issubclass(b1, TensorProductBundle):
+        b1_bundles, b2_bundles = b1.bundles, (b2,)
+    elif issubclass(b2, TensorProductBundle):
+        b1_bundles, b2_bundles = (b1,), b2.bundles
+    else:
+        # both are tensors instantiated off a vector bundle
+        if not specs_match(b1, b2):
+            return False
+        return True
+
+    if _are_bundles_equiv(b1_bundles, b2_bundles):
+        return True
+    return False
+
+
+def _get_most_general_bundle(b1: type[VectorBundle], b2: type[VectorBundle]):
+    if issubclass(b1, b2):
+        return b2
+    elif issubclass(b2, b1):
+        return b1
+    return b1
+
+
+def _get_compatible_bundle(b1: type[VectorBundle], b2: type[VectorBundle]) -> type[VectorBundle]:
+    if _bundles_compatible(b1, b2):
+        return _get_most_general_bundle(b1, b2)
+    raise ValueError(f"bundles {b1} and {b2} are incompatible")
+
+
+@top_level
 class VectorBundle(Manifold):
     _rank: int
     _base: type[Manifold] | None
@@ -67,6 +116,12 @@ class VectorBundle(Manifold):
             namespace,
         )
 
+    @classmethod
+    def compatible_bundle(cls, b: type[VectorBundle]) -> bool:
+        if cls.incomplete:
+            raise TypeError("bundle type must be fully speciailized to check compatibility with instances")
+        return _bundles_compatible(cls, b)
+
     @classproperty
     def rank(cls) -> int:
         return cls._rank
@@ -102,12 +157,15 @@ class TensorProductBundle(VectorBundle):
 
     @classmethod
     def __class_getitem__(cls, args):  # pyright: ignore[reportIncompatibleMethodOverride]
-        if type(args) is not tuple:
-            return args  # not a tensor if only provided a single bundle
+        # create a regular bundle if only provided one
+        if not isinstance(args, Sequence):
+            return args
+        elif len(args) == 1:
+            return args[0]
 
         # must ensure that all the provided bundles are defined and share the same underlying manifold or that all are
         # undefined so that some base manifold can be provided through delayed specification
-        bundles: Tuple[type[VectorBundle], ...] = args
+        bundles: tuple[type[VectorBundle], ...] = tuple(args)
 
         bundles_incomplete: Optional[bool] = None
         for bundle in bundles:
@@ -186,6 +244,13 @@ class TensorProductBundle(VectorBundle):
             for unique_bundle in unique_bundle_types
         }
         return bundle_type_count
+
+    @staticmethod
+    def product_bundles(bundle: type[VectorBundle]) -> type[VectorBundle] | tuple[type[VectorBundle], ...]:
+        if issubclass(bundle, TensorProductBundle):
+            return bundle.bundles
+        else:
+            return bundle
 
 
 class DualBundle(VectorBundle):

@@ -4,11 +4,10 @@ import torch
 from typing import Callable
 from scipy.integrate import solve_ivp, solve_bvp
 
+from dmol.diff_mfld.connection.base import Connection
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.tensor import Vec
 from dmol.diff_mfld.curve import Curve
-
-import dmol.diff_mfld.connection.connection as conn
 
 
 def _exp_map_ivp_fn(t, y: np.ndarray, n: int, coeffs_fn: Callable[[np.ndarray], np.ndarray]) -> np.ndarray:
@@ -22,7 +21,7 @@ def _exp_map_ivp_fn(t, y: np.ndarray, n: int, coeffs_fn: Callable[[np.ndarray], 
 
 
 def ivp_exp_map[M: Manifold](
-    p: Point[M] | torch.Tensor, v: Vec[M], conn: conn.TangentConnection[M], method="Radau"
+    p: Point[M] | torch.Tensor, v: Vec[M], conn: Connection[M], method="Radau"
 ) -> tuple[Point[M], Curve[M]]:
     p = Point[v.bundle.base](p)
     Vec[v.bundle.base].validate_tensor(v)
@@ -80,7 +79,7 @@ def _coeffs_np_batched(p_batched: np.ndarray, coeffs_np: Callable[[np.ndarray], 
 
 
 def bvp_log_map[M: Manifold](
-    p: Point[M] | torch.Tensor, q: Point[M] | torch.Tensor, conn: conn.TangentConnection[M]
+    p: Point[M] | torch.Tensor, q: Point[M] | torch.Tensor, conn: Connection[M]
 ) -> tuple[Vec[M], Curve[M]]:
     p = Point[conn.bundle.base](p)
     q = Point[conn.bundle.base](q)

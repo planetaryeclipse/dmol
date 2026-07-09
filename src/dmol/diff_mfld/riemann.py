@@ -1,12 +1,21 @@
 import torch
 
-from typing import Union, Callable, override, Self
+from typing import Union, Callable, override
 
-from dmol.diff_mfld.mfld import Manifold, Point
-from dmol.diff_mfld.bundle.tensor import Tensor, Cov, Vec, check_tensor_type
-from dmol.diff_mfld.bundle.vector_bundle import TensorBundle
-from dmol.diff_mfld.field.field import Field, LambdaField, VectorField, CovectorField, ScalarField
-from dmol.diff_mfld.connection.connection import TangentConnection
+from dmol.diff_mfld.connection import Connection
+from dmol.diff_mfld.connection.covar_diff import FieldCustomCovar
+from dmol.diff_mfld.connection.tangent import TangentConnection
+from dmol.diff_mfld.field.field_types import CovectorField, LambdaField, VectorField
+from dmol.diff_mfld.mfld import Point
+from dmol.diff_mfld.bundle.tensor import Tensor, Cov, Vec
+from dmol.diff_mfld.bundle.vector_bundle import (
+    TangentBundle,
+    TensorBundle,
+    TensorProductBundle,
+    CotangentBundle,
+    VectorBundle,
+)
+from dmol.diff_mfld.field.base import Field
 
 
 class RicciCurvature(Tensor[TensorBundle[0, 2]]):
@@ -77,9 +86,17 @@ class Metric(Tensor[TensorBundle[0, 2]]):
         Cov[self.bundle.base].validate_tensor(u)
         return Vec[self.bundle.base](self._inv @ u.components)
 
-    def flat(self, u: Vec) -> Cov:
-        Vec[self.bundle.base].validate_tensor(u)
-        return Cov[self.bundle.base](self.components @ u.components)
+    def flat(self, u: Vec | Tensor[TensorBundle[1, 1]]) -> Cov | Tensor[TensorBundle[0, 2]]:
+        # TODO: refactor to handle general cases but this will suffice for now
+        print(self.bundle.base)
+        if TangentBundle[self.bundle.base].compatible_bundle(u.bundle):
+            comps = self.components @ u.components
+            return Cov[self.bundle.base](comps)
+        elif TensorBundle[1, 1][self.bundle.base].compatible_bundle(u.bundle):
+            comps = torch.einsum("ij,jk->ik", self.components, u.components)
+            return Tensor[TensorBundle[0, 2]][self.bundle.base](comps)
+        else:
+            raise NotImplementedError(f"metric lower not automatically compatible with bundle {u.bundle}")
 
     def inner(self, u: Vec, v: Vec) -> float:
         Vec[self.bundle.base].validate_tensor(u)
@@ -101,6 +118,10 @@ class MetricField(Field[Metric]):
         if type(self) is MetricField:
             raise TypeError("can only instantiate subclasses of metric fields")
 
+    def flat(self, vf: VectorField) -> CovectorField:
+        VectorField[vf.bundle.base].validate_field(vf)
+        return _MetricLower.create_lower(self, vf)  # type: ignore
+
     def levi_civita(self) -> LeviCivitaConnection:
         return LeviCivitaConnection[self.tensor.bundle.base](self)
 
@@ -109,6 +130,10 @@ class MetricLambdaField(LambdaField, MetricField):
     def __init__(self, field_fn: Callable[[torch.Tensor | tuple[torch.Tensor, ...]], torch.Tensor]):
         super().__init__(field_fn=field_fn)
 
+    @override
+    def __call__(self, p: Point | torch.Tensor) -> Metric:
+        return super().__call__(p)  # type: ignore
+
 
 class EuclideanMetricField(MetricField):
     @override
@@ -116,27 +141,69 @@ class EuclideanMetricField(MetricField):
         return torch.eye(self.tensor.bundle.base.dim)
 
 
-# TODO: refactor this operation into a general dual index contraction operation but will work for optimization for now
-class _MetricFlat(CovectorField):
-    def __init__(self, metric: MetricField, vf: VectorField):
+def _metric_lower_bundle_ty(
+    bundle: type[VectorBundle], index: int | None = None
+) -> tuple[int, type[TensorProductBundle]]:
+    bundles = TensorProductBundle.product_bundles(bundle)
+    if not isinstance(bundles, tuple):
+        bundles = (bundles,)
+    bundles = list(bundles)
+
+    if index is None:
+        tangent_index = None
+        for i, bundle in enumerate(bundles):
+            if TangentBundle[bundle.base].compatible_bundle(bundle):
+                if tangent_index is None:
+                    tangent_index = i
+                else:
+                    raise ValueError(
+                        "unable to infer index to lower if tensor products of more than one tangent bundle"
+                    )
+        if tangent_index is None:
+            raise ValueError("no tangent bundle is present to be lowered")
+        bundles[tangent_index] = CotangentBundle[bundle.base]
+        lower_index = tangent_index
+    else:
+        if not TangentBundle[bundle.base].compatible_bundle(bundles[index]):
+            raise ValueError("specified index must be a tangent bundle")
+        bundles[index] = CotangentBundle[bundle.base]
+        lower_index = index
+    return lower_index, TensorProductBundle[bundles]
+
+
+class _MetricLower(FieldCustomCovar):
+    def __init__(self, metric: MetricField, field: Field, index: int):
         super().__init__()
         self._metric = metric
-        self._vf = vf
+        self._field = field
+        self._index = index
 
     @override
     def _eval(self, p: torch.Tensor) -> torch.Tensor:
         metric = self._metric._eval(p)  # avoid computing inverse
-        vec = self._vf._eval(p)
 
-        cov = metric @ vec
-        return cov
+        tensor_comps = self._field._eval(p)
+        lowered_comps = torch.tensordot(metric, tensor_comps, ([1], [self._index]))  # type: ignore
+
+        return lowered_comps
 
     @override
     def _eval_partials(self, p: torch.Tensor) -> torch.Tensor:
-        metric = self._metric._eval(p)
-        metric_partials = self._metric._eval_partials(p)
+        raise NotImplementedError()  # covar manually implemented
 
-        vec = self._vf._eval(p)
-        vec_partials = self._vf._eval_partials(p)
+    @override
+    def covar(self, vf: VectorField, conn: Connection) -> Field:
+        raise NotImplementedError()  # for now
 
-        return torch.einsum("ijk,j->ik", metric_partials, vec) + torch.einsum("ij,jk->ik", metric, vec_partials)
+    @override
+    def total_covar(self, conn: Connection) -> Field:
+        return _MetricLower.create_lower(
+            self._metric,
+            conn.total_covar(self._field),
+            index=self._index,  # lower index added at end so this remains unaffeccted
+        )
+
+    @staticmethod
+    def create_lower(metric: MetricField, field: Field, index: int | None = None):
+        lower_index, lower_bundle_ty = _metric_lower_bundle_ty(field.bundle, index)
+        return _MetricLower[lower_bundle_ty](metric, field, lower_index)

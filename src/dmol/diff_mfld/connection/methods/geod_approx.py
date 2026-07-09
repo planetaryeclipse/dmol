@@ -1,11 +1,8 @@
 import torch
 
-from typing import Callable
-
+from dmol.diff_mfld.connection.base import Connection
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.tensor import Vec
-
-import dmol.diff_mfld.connection.connection as conn
 
 # approximation terms
 
@@ -52,9 +49,7 @@ def _f4_geod(
     )
 
 
-def approx_exp_map[M: Manifold](
-    p: Point[M] | torch.Tensor, v: Vec[M], conn: conn.TangentConnection[M], approx_order=1
-) -> Point[M]:
+def approx_exp_map[M: Manifold](p: Point[M] | torch.Tensor, v: Vec[M], conn: Connection[M], approx_order=1) -> Point[M]:
     p = Point[v.bundle.base](p)
     Vec[v.bundle.base].validate_tensor(v)
 
@@ -148,7 +143,7 @@ def _approx_log_o4(
 def approx_log_map[M: Manifold](
     p: Point[M] | torch.Tensor,
     q: Point[M] | torch.Tensor,
-    conn: conn.TangentConnection[M],
+    conn: Connection[M],
     approx_order=1,
 ) -> Vec[M]:
     p = Point[conn.bundle.base](p)

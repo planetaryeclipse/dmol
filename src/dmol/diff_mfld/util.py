@@ -1,7 +1,7 @@
 import torch
 import inspect
 
-from typing import Tuple, Optional, Set, TypeVar, Callable
+from typing import Tuple, Optional, Set, TypeVar, Callable, Sequence
 
 
 class classproperty:
@@ -10,6 +10,11 @@ class classproperty:
 
     def __get__(self, obj, cls):
         return self.func(cls)
+
+
+def top_level(cls):
+    cls._top_level_type = cls
+    return cls
 
 
 def disable_matching(cls):
@@ -25,6 +30,16 @@ def _get_mro_annotations(cls: type) -> Set[str]:
     return all_annotations
 
 
+def _get_top_level_ty(cls: type) -> type:
+    top_level_ty = None
+    for cls in inspect.getmro(cls):
+        if issubclass(type(cls), PartialSpec):
+            top_level_ty = cls
+    if top_level_ty is None:
+        raise TypeError("at least one class in the mro must have metaclass PartialSpec")
+    return top_level_ty
+
+
 class PartialSpec(type):
     def __new__(
         mcls,
@@ -36,8 +51,10 @@ class PartialSpec(type):
     ):
         cls = super().__new__(mcls, name, bases, namespace, **kwds)
         cls._incomplete = True  # type: ignore
+        cls._allow_incomplete = getattr(cls, "_allow_incomplete", False)  # type: ignore
+
         cls._min_complete = False  # type: ignore
-        cls._top_level_type = cls  # type: ignore
+        cls._top_level_type = getattr(cls, "_top_level_type", _get_top_level_ty(cls))  # type: ignore
         cls._enable_spec_match = True  # type: ignore
 
         # default is that specs are all the annotations in mro
@@ -53,7 +70,7 @@ class PartialSpec(type):
         return cls
 
     def __call__(self, *args, **kwds):
-        if self._incomplete:  # type: ignore
+        if self._incomplete and not self._allow_incomplete:  # type: ignore
             raise TypeError(f"type must be fully specified before instantiation")
         return super().__call__(*args, **kwds)
 
@@ -146,6 +163,19 @@ def specifications(
     return decorate if cls is None else decorate(cls)
 
 
+def _check_fields(field, other_field) -> bool:
+    if isinstance(field, PartialSpec) and isinstance(other_field, PartialSpec):
+        if not specs_match(field, other_field):
+            return False
+    elif isinstance(field, Sequence) and isinstance(other_field, Sequence):
+        for element, other_element in zip(field, other_field):
+            if not _check_fields(element, other_element):
+                return False
+    elif field != other_field:
+        return False
+    return True
+
+
 def specs_match(ty: PartialSpec, other_ty: PartialSpec):
     if not ty._enable_spec_match or not other_ty._enable_spec_match:  # type: ignore
         # if spec match is disabled then directly checks that the classes are the same
@@ -158,11 +188,7 @@ def specs_match(ty: PartialSpec, other_ty: PartialSpec):
     if ty._specs == other_ty._specs:  # type: ignore
         for spec in ty._specs:  # type: ignore
             field, other_field = getattr(ty, spec), getattr(other_ty, spec)
-
-            if isinstance(field, PartialSpec) and isinstance(other_field, PartialSpec):
-                if not specs_match(field, other_field):
-                    return False
-            elif field != other_field:
+            if not _check_fields(field, other_field):
                 return False
     else:
         return False

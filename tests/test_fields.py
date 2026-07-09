@@ -3,12 +3,15 @@ import pytest
 
 from torch.testing import assert_close
 
+from dmol.diff_mfld.field.field_types import LambdaField
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.vector_bundle import (
     ScalarBundle,
     VectorBundle,
 )
-from dmol.diff_mfld.field.field import LambdaField, coord_repr, check_field_expr_callable_for_gradient
+
+from dmol.diff_mfld.field.util import coord_repr
+from dmol.diff_mfld.field.testing import check_field_expr_callable_for_gradient
 from dmol.diff_mfld.riemann import MetricLambdaField, EuclideanMetricField
 
 

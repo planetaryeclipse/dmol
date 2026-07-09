@@ -5,10 +5,10 @@ from torch.testing import assert_close
 
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.tensor import Vec
-from dmol.diff_mfld.field.field import coord_repr
+from dmol.diff_mfld.field.util import coord_repr
 from dmol.diff_mfld.riemann import EuclideanMetricField, MetricLambdaField
 
-from dmol.diff_mfld.connection.pt_vec import approx_pt_vec, ivp_pt_vec
+from dmol.diff_mfld.connection.methods.pt_vec import approx_pt_vec
 
 
 class TestParallelTransportVector:

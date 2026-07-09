@@ -1,12 +1,12 @@
 import torch
 import numpy as np
 
+from dmol.diff_mfld.connection.base import Connection
 from dmol.diff_mfld.mfld import Manifold, Point
-from dmol.diff_mfld.connection.connection import TangentConnection
 from dmol.diff_mfld.bundle.tensor import Tensor, Vec
 from dmol.diff_mfld.bundle.vector_bundle import TensorBundle
 
-from dmol.diff_mfld.connection.geod_approx import (
+from dmol.diff_mfld.connection.methods.geod_approx import (
     _f1_geod,
     _f2_geod,
     _f3_geod,
@@ -18,9 +18,8 @@ from dmol.diff_mfld.connection.geod_approx import (
     approx_log_map,
 )
 
-from dmol.diff_mfld.connection.geod_ivp_bvp import bvp_log_map
+from dmol.diff_mfld.connection.methods.geod_ivp_bvp import bvp_log_map
 from dmol.diff_mfld.riemann import EuclideanMetricField, MetricLambdaField
-from dmol.diff_mfld.field.field import coord_repr
 
 
 def _f1_log_diff(q: torch.Tensor, p: torch.Tensor):
@@ -246,7 +245,7 @@ def _approx_log_covar_o4(
 
 
 def approx_log_covar[M: Manifold](
-    p: Point[M] | torch.Tensor, q: Point[M] | torch.Tensor, v: Vec[M], conn: TangentConnection[M], approx_order=1
+    p: Point[M] | torch.Tensor, q: Point[M] | torch.Tensor, v: Vec[M], conn: Connection[M], approx_order=1
 ) -> Tensor[TensorBundle[1, 1]]:
     p = Point[conn.bundle.base](p)
     q = Point[conn.bundle.base](q)

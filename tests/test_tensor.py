@@ -3,7 +3,7 @@ import pytest
 
 from torch.testing import assert_close
 
-from dmol.diff_mfld.mfld import Manifold, Point
+from dmol.diff_mfld.mfld import Manifold
 from dmol.diff_mfld.bundle.vector_bundle import VectorBundle, TangentBundle, TensorProductBundle, TensorBundle, KBundle
 from dmol.diff_mfld.bundle.tensor import Tensor
 

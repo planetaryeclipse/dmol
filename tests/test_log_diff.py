@@ -4,13 +4,12 @@ import torch
 from torch.testing import assert_close
 
 from dmol.diff_mfld.mfld import Manifold, Point
-from dmol.diff_mfld.bundle.tensor import Vec
-from dmol.diff_mfld.field.field import coord_repr
+from dmol.diff_mfld.field.util import coord_repr
 from dmol.diff_mfld.riemann import EuclideanMetricField, MetricLambdaField
 
-from dmol.diff_mfld.connection.geod_ivp_bvp import bvp_log_map
-from dmol.diff_mfld.connection.log_diff import approx_log_covar
-from dmol.diff_mfld.connection.geod_approx import approx_log_map
+from dmol.diff_mfld.connection.methods.geod_ivp_bvp import bvp_log_map
+from dmol.diff_mfld.connection.methods.log_diff import approx_log_covar
+from dmol.diff_mfld.connection.methods.geod_approx import approx_log_map
 
 
 class TestLogdiff:

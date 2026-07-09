@@ -2,7 +2,7 @@ import torch
 
 from typing import Tuple
 
-from dmol.diff_mfld.util import classproperty, PartialSpec, DerivedPartialSpec, specs_match, specifications
+from dmol.diff_mfld.util import classproperty, PartialSpec, DerivedPartialSpec, specifications
 from dmol.diff_mfld.mfld import Manifold
 from dmol.diff_mfld.bundle.vector_bundle import (
     ScalarBundle,
@@ -10,51 +10,8 @@ from dmol.diff_mfld.bundle.vector_bundle import (
     TangentBundle,
     CotangentBundle,
     TensorProductBundle,
+    _get_compatible_bundle,
 )
-
-
-def _are_bundles_equiv(b1: tuple[type[VectorBundle], ...], b2: tuple[type[VectorBundle], ...]):
-    for first, second in zip(b1, b2):
-        if issubclass(first, TensorProductBundle) or issubclass(second, TensorProductBundle):
-            raise TypeError()  # should be unreachable
-        elif not specs_match(first, second):
-            return False
-    return True
-
-
-def _get_most_general_bundle(b1: type[VectorBundle], b2: type[VectorBundle]):
-    if issubclass(b1, b2):
-        return b2
-    elif issubclass(b2, b1):
-        return b1
-    return b1
-
-
-def _bundles_compatible(b1: type[VectorBundle], b2: type[VectorBundle]) -> bool:
-    if b1.incomplete or b2.incomplete:
-        raise TypeError(f"bundles {b1} and {b2} must be completely specified")
-
-    if issubclass(b1, TensorProductBundle) and issubclass(b2, TensorProductBundle):
-        b1_bundles, b2_bundles = b1.bundles, b2.bundles
-    elif issubclass(b1, TensorProductBundle):
-        b1_bundles, b2_bundles = b1.bundles, (b2,)
-    elif issubclass(b2, TensorProductBundle):
-        b1_bundles, b2_bundles = (b1,), b2.bundles
-    else:
-        # both are tensors instantiated off a vector bundle
-        if not specs_match(b1, b2):
-            return False
-        return True
-
-    if _are_bundles_equiv(b1_bundles, b2_bundles):
-        return True
-    return False
-
-
-def _get_compatible_bundle(b1: type[VectorBundle], b2: type[VectorBundle]) -> type[VectorBundle]:
-    if _bundles_compatible(b1, b2):
-        return _get_most_general_bundle(b1, b2)
-    raise ValueError(f"bundles {b1} and {b2} are incompatible")
 
 
 @specifications(fields={"_bundle"})
@@ -134,7 +91,7 @@ class Tensor(metaclass=PartialSpec):
     def validate_tensor(cls, t: Tensor):
         if cls.incomplete:
             raise TypeError("tensor type must be fully specialized to validate instances")
-        elif not specs_match(cls, type(t)):
+        elif not cls.bundle.compatible_bundle(t.bundle):
             raise ValueError(f"instance with bundle {t.bundle} must match bundle {cls.bundle}")
 
     def __neg__(self):

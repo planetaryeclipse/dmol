@@ -5,7 +5,6 @@ from torch.testing import assert_close
 
 from dmol.diff_mfld.util import specs_match
 from dmol.diff_mfld.mfld import Manifold, Point
-from dmol.diff_mfld.bundle.vector_bundle import VectorBundle
 
 
 class TestManifold:

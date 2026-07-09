@@ -1,11 +1,11 @@
 import torch
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Callable
 
+from dmol.diff_mfld.field.field_types import ScalarField
 from dmol.diff_mfld.mfld import Manifold, Point
-from dmol.diff_mfld.bundle.vector_bundle import ScalarBundle
-from dmol.diff_mfld.field.field import Field, ScalarField, fields_compatible
+from dmol.diff_mfld.field import Field
 from dmol.diff_mfld.bundle.tensor import Vec, Scalar
 from dmol.diff_mfld.riemann import Metric, MetricField, TangentConnection
 
@@ -33,7 +33,7 @@ def rgd[M: Manifold](
 ) -> UnconstrResult:
     print(f.bundle)
 
-    if not fields_compatible(f, ScalarField[f.bundle.base]):
+    if not ScalarField[f.bundle.base].compatible_field(f):
         raise ValueError("f must be a scalar field")
 
     if conn is None:

@@ -15,6 +15,12 @@ from dmol.diff_mfld.bundle.vector_bundle import (
 
 
 class TestVectorBundle:
+    def test_top_level(self):
+        V1 = VectorBundle
+        assert V1.top_level is VectorBundle
+        V1 = VectorBundle[2]
+        assert V1.top_level is VectorBundle
+
     def test_type_gen(self):
         # test partial instantiation (only rank)
 

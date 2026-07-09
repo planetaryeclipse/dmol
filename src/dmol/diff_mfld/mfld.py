@@ -3,8 +3,8 @@ import torch
 from typing import Union, Any
 
 from dmol.diff_mfld.util import (
-    classproperty,
     PartialSpec,
+    classproperty,
     DerivedPartialSpec,
     specs_match,
     disable_matching,
