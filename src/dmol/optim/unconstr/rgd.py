@@ -1,27 +1,16 @@
 import torch
 
-from dataclasses import dataclass
 from typing import Callable
 
 from dmol.diff_mfld.field.field_types import ScalarField
 from dmol.diff_mfld.mfld import Manifold, Point
-from dmol.diff_mfld.field import Field
-from dmol.diff_mfld.bundle.tensor import Vec, Scalar
+from dmol.diff_mfld.bundle.tensor import Vec
 from dmol.diff_mfld.riemann import Metric, MetricField, TangentConnection
-
-
-@dataclass
-class UnconstrResult[M: Manifold]:
-    success: bool
-    num_iters: int
-    p: Point[M]
-    f: Scalar[M]
-    f_hist: torch.Tensor | None = None
-    p_hist: torch.Tensor | None = None
+from dmol.optim.unconstr.result import UnconstrResult
 
 
 def rgd[M: Manifold](
-    f: Field[M],
+    f: ScalarField[M],
     p0: Point[M] | torch.Tensor,
     metric: MetricField[M],
     conn: TangentConnection[M] | None = None,
@@ -48,8 +37,8 @@ def rgd[M: Manifold](
 
     print(f"initial: p={p.p}, f={f_val.components}, f_diff={f_diff(p).components}")
 
-    f_hist = [f] if save_hist else None
-    p_hist = [p] if save_hist else None
+    f_hist = [f_val.components.item()] if save_hist else None
+    p_hist = [p.p] if save_hist else None
 
     success = False
     i: int = 0
@@ -57,11 +46,11 @@ def rgd[M: Manifold](
         if success:
             break
 
-        metric_tensor: Metric[M] = metric(p)  # type: ignore
-        f_grad = metric_tensor.sharp(f_diff(p))
+        metric_tens = metric(p)
+        f_grad = metric_tens.sharp(f_diff(p))
 
         p_next, _ = conn.exp(p, -damp * f_grad)
-        f_val_next = f(p)
+        f_val_next = f(p_next)
 
         print(f"p={p_next.p}, f={f_val_next.components}, f_grad={f_grad.components}")
 
@@ -73,18 +62,10 @@ def rgd[M: Manifold](
 
         # record the current step cost and position if enabled
         if save_hist:
-            f_hist.append(f_val)  # type: ignore
+            f_hist.append(f_val.components.item())  # type: ignore
             p_hist.append(p.p)  # type: ignore
 
     result = UnconstrResult(success=success, p=p, f=f_val, num_iters=i)
     if save_hist:
-        num_samples = len(f_hist)  # type: ignore
-        f_hist_tens = torch.zeros((num_samples,))
-        p_hist_tens = torch.zeros((f.bundle.base.dim, num_samples))
-        for i in range(num_samples):
-            f_hist_tens[i] = f_hist[i]  # type: ignore
-            p_hist_tens[i, :] = p_hist[i]  # type: ignore
-
-        result.f_hist = f_hist_tens
-        result.p_hist = p_hist_tens
+        result.add_hist(f_hist, p_hist)  # type: ignore
     return result

@@ -88,7 +88,7 @@ def approx_exp_map[M: Manifold](p: Point[M] | torch.Tensor, v: Vec[M], conn: Con
         q = p_tens + v_tens + 1.0 / 2.0 * dot_v + 1 / 6.0 * dot_dot_v + 1 / 24.0 * dot_dot_dot_v
     else:
         raise NotImplementedError()
-    return Point[v.bundle](q)
+    return Point[v.bundle.base](q)
 
 
 def _approx_log_o1(q: torch.Tensor, p: torch.Tensor):

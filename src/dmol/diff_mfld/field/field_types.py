@@ -3,13 +3,17 @@ from typing import Callable, override
 
 import torch
 
+from dmol.diff_mfld.bundle.tensor import Scalar, Tensor
 from dmol.diff_mfld.bundle.vector_bundle import CotangentBundle, ScalarBundle, TangentBundle
 from dmol.diff_mfld.field.base import Field
+from dmol.diff_mfld.mfld import Point
 from dmol.diff_mfld.util import split_coords
 
 
 class ScalarField(Field[ScalarBundle]):
-    pass
+    @override
+    def __call__(self, p: Point | Tensor) -> Scalar:
+        return super().__call__(p)  # type: ignore
 
 
 class VectorField(Field[TangentBundle]):

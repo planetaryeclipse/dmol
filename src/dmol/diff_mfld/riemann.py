@@ -118,6 +118,10 @@ class MetricField(Field[Metric]):
         if type(self) is MetricField:
             raise TypeError("can only instantiate subclasses of metric fields")
 
+    @override
+    def __call__(self, p: Point | torch.Tensor) -> Metric:
+        return super().__call__(p)  # type: ignore
+
     def flat(self, vf: VectorField) -> CovectorField:
         VectorField[vf.bundle.base].validate_field(vf)
         return _MetricLower.create_lower(self, vf)  # type: ignore

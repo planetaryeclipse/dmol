@@ -6,9 +6,9 @@ from enum import Enum
 
 from dmol.diff_mfld.funcs import MfldFunc, FuncArgs
 from dmol.diff_mfld.mfld import ComputeMfld
-from dmol.optim.constrained.ralm import RalmCfg, ralm
-from dmol.optim.constrained.repm import RepmCfg, repm
-from dmol.optim.constrained.rsqo import rsqo, RsqoCfg
+from dmol.optim.constr.ralm import RalmCfg, ralm
+from dmol.optim.constr.repm import RepmCfg, repm
+from dmol.optim.constr.rsqo import rsqo, RsqoCfg
 from dmol.optim.results import ConstrSolverCfg
 
 

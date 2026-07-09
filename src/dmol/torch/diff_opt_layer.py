@@ -11,7 +11,7 @@ from typing import List, Tuple, Any, Optional
 from dmol.diff_mfld.funcs import FuncArgs, MfldFunc
 
 
-from dmol.optim.constrained import (
+from dmol.optim.constr import (
     ConstrainedSolverCfg,
     ConstrainedSolverMethod,
     ConstrainedSolverResult,
@@ -45,8 +45,7 @@ class DiffMfldOptimProblem(Function):
         )
         if not result.success:
             raise ValueError(
-                "Differentiable manifold optimization torch failed to "
-                f"converge to a solution: {result}"
+                "Differentiable manifold optimization torch failed to " f"converge to a solution: {result}"
             )
         p_optimal = result.p
 
@@ -91,12 +90,8 @@ class DiffMfldOptimProblem(Function):
         # evaluates the original solution map dual (tensor accepting tangent
         # vector of the optimization curve twice) at the optimized point
         hessian_f: torch.Tensor = f.hess(p_optimal, mfld_cfg, *func_args)
-        partial_gs: List[torch.Tensor] = [
-            g.diff(p_optimal, mfld_cfg, *func_args) for g in gs
-        ]
-        hessian_gs: List[torch.Tensor] = [
-            g.hess(p_optimal, mfld_cfg, *func_args) for g in gs
-        ]
+        partial_gs: List[torch.Tensor] = [g.diff(p_optimal, mfld_cfg, *func_args) for g in gs]
+        hessian_gs: List[torch.Tensor] = [g.hess(p_optimal, mfld_cfg, *func_args) for g in gs]
 
         soln_map_dual: torch.Tensor = hessian_f
         for g_mult, hessian_g in zip(g_mults, hessian_gs):
@@ -121,9 +116,7 @@ class DiffMfldOptimProblem(Function):
             ([1], [0]),
         )
 
-        return soln_map_jacob.inverse() * grad_output, *[
-            None for _ in range(7 + len(func_args))
-        ]
+        return soln_map_jacob.inverse() * grad_output, *[None for _ in range(7 + len(func_args))]
 
 
 class DiffMfldOptimLayer(Module):

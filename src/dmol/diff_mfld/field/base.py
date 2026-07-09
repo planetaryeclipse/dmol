@@ -65,7 +65,6 @@ class Field(metaclass=PartialSpec):
 
     @classproperty
     def tensor(self) -> type[Tensor]:
-        print(f"cls: {self}")
         return self._tensor
 
     @classproperty
