@@ -53,7 +53,10 @@ class Field(metaclass=PartialSpec):
         p = Point[self._tensor.bundle.base](p)  # ensures that the point is compatible
         return self._tensor(self._eval(p.p))
 
-    def partials(self, p: Union[Point, torch.Tensor]) -> torch.Tensor:
+    def comps(self, p: Point | torch.Tensor) -> torch.Tensor:
+        return self(p).components
+
+    def partials(self, p: Point | torch.Tensor) -> torch.Tensor:
         p = Point[self._tensor._bundle.base](p)
         partials = self._eval_partials(p.p)
 

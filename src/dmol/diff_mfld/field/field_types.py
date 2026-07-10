@@ -12,8 +12,20 @@ from dmol.diff_mfld.util import split_coords
 
 class ScalarField(Field[ScalarBundle]):
     @override
-    def __call__(self, p: Point | Tensor) -> Scalar:
+    def __call__(self, p: Point | torch.Tensor) -> Scalar:
         return super().__call__(p)  # type: ignore
+
+
+class FloatField(ScalarField):
+    def __init__(self, value: float):
+        super().__init__()
+        self._value = value
+
+    def _eval(self, p: torch.Tensor) -> torch.Tensor:
+        return torch.tensor(self._value)
+
+    def _eval_partials(self, p: torch.Tensor) -> torch.Tensor:
+        return torch.zeros_like(p)
 
 
 class VectorField(Field[TangentBundle]):

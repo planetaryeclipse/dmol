@@ -95,6 +95,8 @@ class TestRiemSqrDist:
         )
         riem_sqr_field_covar = conn.total_covar(riem_sqr_field)
         riem_sqr_field_hess = conn.total_covar(riem_sqr_field_covar)
+        print(f"after making riem sqr field hess: {riem_sqr_field_hess}")
+        print()
         hess = riem_sqr_field_hess(p)
 
         assert_tensors_equiv(hess_expected, hess)

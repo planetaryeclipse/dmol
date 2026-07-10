@@ -64,6 +64,10 @@ class RiemSqrDist(ScalarField, FieldCustomCovar):
             ),  # type: ignore
         )
 
+    def __repr__(self) -> str:
+        # TODO: possibly add more fields in this display
+        return f"RiemSqrDist[{self._q}]"
+
 
 class RiemLog(VectorField, FieldCustomCovar):
     def __init__(
@@ -104,6 +108,10 @@ class RiemLog(VectorField, FieldCustomCovar):
             self._q, self._metric, log_method=self._log_method, log_covar_method=self._log_covar_method
         )
 
+    def __repr__(self) -> str:
+        # TODO: possibly add more fields in this display
+        return f"RiemLog[{self._q}]"
+
 
 class _RiemLogCovar(FieldCustomCovar[TensorBundle[1, 1]]):
     def __init__(
@@ -130,3 +138,7 @@ class _RiemLogCovar(FieldCustomCovar[TensorBundle[1, 1]]):
 
     def _eval_partials(self, p: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError()  # no further covariant differentiation (for now)
+
+    def __repr__(self) -> str:
+        # TODO: possibly add more fields in this display
+        return f"_RiemLogCovar[{self._q}]"

@@ -224,6 +224,12 @@ class TensorProductBundle(VectorBundle):
         )
 
     @classproperty
+    def tensor_rank(cls):
+        if cls._bundles is not None:
+            return len(cls._bundles)
+        return None
+
+    @classproperty
     def bundles(cls) -> tuple[type[VectorBundle], ...]:
         all_bundles = []
         if cls._bundles is not None:
@@ -251,6 +257,13 @@ class TensorProductBundle(VectorBundle):
             return bundle.bundles
         else:
             return bundle
+
+    @staticmethod
+    def product_tensor_rank(bundle: type[VectorBundle]) -> int:
+        if issubclass(bundle, TensorProductBundle):
+            return bundle.tensor_rank
+        else:
+            return 1
 
 
 class DualBundle(VectorBundle):

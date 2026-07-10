@@ -88,7 +88,6 @@ class Metric(Tensor[TensorBundle[0, 2]]):
 
     def flat(self, u: Vec | Tensor[TensorBundle[1, 1]]) -> Cov | Tensor[TensorBundle[0, 2]]:
         # TODO: refactor to handle general cases but this will suffice for now
-        print(self.bundle.base)
         if TangentBundle[self.bundle.base].compatible_bundle(u.bundle):
             comps = self.components @ u.components
             return Cov[self.bundle.base](comps)
@@ -211,3 +210,6 @@ class _MetricLower(FieldCustomCovar):
     def create_lower(metric: MetricField, field: Field, index: int | None = None):
         lower_index, lower_bundle_ty = _metric_lower_bundle_ty(field.bundle, index)
         return _MetricLower[lower_bundle_ty](metric, field, lower_index)
+
+    def __repr__(self) -> str:
+        return f"_MetricLower[{self._field}, {self._index}]"

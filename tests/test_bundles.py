@@ -10,6 +10,13 @@ class TestVectorBundle:
         assert TangentBundle[M].compatible_bundle(TensorBundle[1, 0][M])
         assert not TangentBundle[M].compatible_bundle(TensorBundle[1, 1][M])
 
+        assert not TensorProductBundle[
+            TensorProductBundle[
+                DualBundle[TangentBundle[M]],
+                TangentBundle[M],
+            ]
+        ].compatible_bundle(TensorBundle[1, 1][M])
+
         assert TensorProductBundle[
             DualBundle[TangentBundle[M]],
             DualBundle[TangentBundle[M]],

@@ -86,5 +86,4 @@ class _TotalCovarField(FieldCustomCovar):
 
     @staticmethod
     def create_covar(field: Field, conn: Connection):
-        print("creating covar")
         return _TotalCovarField[_total_covar_bundle_ty(field.bundle)](field, conn)

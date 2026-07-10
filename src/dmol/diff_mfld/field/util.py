@@ -2,6 +2,12 @@ from typing import Sequence
 
 import torch
 
+from dmol.diff_mfld.bundle.vector_bundle import ScalarBundle
+from dmol.diff_mfld.connection.base import Connection
+from dmol.diff_mfld.connection.covar_diff import FieldCustomCovar
+from dmol.diff_mfld.field.base import Field
+from dmol.diff_mfld.field.field_types import ScalarField
+
 
 def coord_repr(
     repr: torch.Tensor | float | Sequence[torch.Tensor | float] | Sequence[Sequence[torch.Tensor | float]],

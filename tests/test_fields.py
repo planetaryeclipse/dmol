@@ -3,7 +3,8 @@ import pytest
 
 from torch.testing import assert_close
 
-from dmol.diff_mfld.field.field_types import LambdaField
+from dmol.diff_mfld.bundle.tensor import Cov
+from dmol.diff_mfld.field.field_types import FloatField, LambdaField
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.vector_bundle import (
     ScalarBundle,
@@ -13,9 +14,10 @@ from dmol.diff_mfld.bundle.vector_bundle import (
 from dmol.diff_mfld.field.util import coord_repr
 from dmol.diff_mfld.field.testing import check_field_expr_callable_for_gradient
 from dmol.diff_mfld.riemann import MetricLambdaField, EuclideanMetricField
+from dmol.diff_mfld.testing import assert_tensors_equiv
 
 
-class TestLambdaDiffField:
+class TestLambdaField:
     def test_scalar(self):
         M = Manifold[2]
         S = LambdaField[ScalarBundle][M]
@@ -25,6 +27,38 @@ class TestLambdaDiffField:
         p = Point[M](torch.tensor([2.0, 3.0]))
         assert s1(p).components == 2.0 * 3.0
         assert s2(p).components == 2.0 + 3.0
+
+
+class TestFloatField:
+    def test_float(self):
+        M = Manifold[2]
+
+        f1 = FloatField[M](2.0)
+        f2 = FloatField[M](3.0)
+
+        p = Point[M](torch.tensor([2.0, 3.0]))
+        assert_tensors_equiv(f1(p), torch.tensor(2.0))
+        assert_tensors_equiv(f2(p), torch.tensor(3.0))
+
+    def test_float_covar(self):
+        M = Manifold[2]
+
+        metric = MetricLambdaField[M](
+            lambda x, y: coord_repr(
+                [
+                    [1.0 + x**2 * y**2, 0.0],  # type: ignore
+                    [0.0, 1.0 + x**2 * y**2],  # type: ignore
+                ],
+            )
+        )
+        conn = metric.levi_civita()
+
+        f1_covar = conn.total_covar(FloatField[M](2.0))
+        f2_covar = conn.total_covar(FloatField[M](3.0))
+
+        p = Point[M](torch.tensor([2.0, 3.0]))
+        assert_tensors_equiv(f1_covar(p), Cov[M](torch.zeros((2,))))
+        assert_tensors_equiv(f2_covar(p), Cov[M](torch.zeros((2,))))
 
 
 class TestFieldOps:
@@ -51,6 +85,7 @@ class TestFieldOps:
         s = LambdaField[S](lambda x, y: coord_repr(1.0 + x + y + x * y))  # type: ignore
         result_v_s = v * s
         result_s_v = s * v
+
         p = Point[M](torch.tensor([1.0, 2.0]))
         assert_close(result_v_s(p).components, v(p).components * s(p).components)
         assert_close(result_s_v(p).components, s(p).components * v(p).components)
