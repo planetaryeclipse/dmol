@@ -1,392 +1,228 @@
+from typing import Callable, Concatenate, ParamSpec, Sequence
+from math import sqrt
+
 import torch
 
-from copy import copy
-from dataclasses import dataclass, field
-from typing import List, Optional
+from dmol.diff_mfld.bundle.tensor import Vec
+from dmol.diff_mfld.connection.tangent import TangentConnection
+from dmol.diff_mfld.field.field_types import FloatField, ScalarField
+from dmol.diff_mfld.mfld import Manifold, Point
+from dmol.diff_mfld.riemann import MetricField
+from dmol.optim.constr.result import ConstrResult
+from dmol.optim.unconstr.rgd import UnconstrOptimFn, Retraction, rgd
 
-from dmol.optim.results import (
-    CustomConstrSolverResult,
-    ConstrSolverResult,
-    ConstrSolverHistory,
-    SubsolverCfg,
-    ConstrSolverCfg,
-)
-from dmol.optim.subsolver_methods import SubsolverMethod
-from dmol.optim.subsolvers.rgd import RiemGradDescentCfg
-from dmol.diff_mfld.funcs import MfldFunc, FuncArgs
-from dmol.diff_mfld.mfld import ComputeMfld
+type Distance[M: Manifold] = Callable[[Point[M], Point[M]], float]
 
-# implements the Riemannian Augmented Lagrangian Method (RALM) described in "Simple Algorithms for Optimization on
-# Riemannian Manifolds with Constraints"
-
-
-@dataclass
-class RalmCfg(ConstrSolverCfg):
-    acc_tol_min: float = 1e-3
-    acc_tol_0: float = 1e-2
-    acc_decay: float = 0.9  # in (0, 1)
-
-    penalty_0: float = 0.01
-    penalty_growth: float = 1.02  # > 1
-
-    g_mult_0: float = 0.0
-    g_mult_min: float = 0.0
-    g_mult_max: float = 1000.0
-
-    h_mult_0: float = 0.0
-    h_mult_min: float = -1000.0
-    h_mult_max: float = 1000.0
-
-    ratio: float = 0.5  # in (0, 1)
-    min_step: float = 0.02
-
-    subsolver_method: SubsolverMethod = SubsolverMethod.RIEM_GRAD_DESCENT
-    subsolver_cfg: SubsolverCfg = field(
-        default_factory=RiemGradDescentCfg
-    )  # must be type corresponding to the subsolver method
-    max_iters: int = 1000
+P = ParamSpec("P")
+type ConstrOptimFn[M: Manifold, **P] = Callable[
+    Concatenate[
+        ScalarField[M],
+        Sequence[ScalarField[M]],  # ineqs
+        Sequence[ScalarField[M]],  # eqs
+        Point[M] | torch.Tensor,
+        MetricField[M],
+        TangentConnection[M] | None,
+        Retraction[M] | None,
+        Distance[M] | None,
+        UnconstrOptimFn,  # subsolver method
+        dict,  # subsolver args
+        P,
+    ]
+]
 
 
-@dataclass
-class RalmHistory:
-    p_hist: torch.Tensor
-
-    f_hist: torch.Tensor
-    gs_hist: torch.Tensor
-    hs_hist: torch.Tensor
-
-    acc_hist: torch.Tensor
-    penalty_hist: torch.Tensor
-
-    g_mults_hist: torch.Tensor
-    h_mults_hist: torch.Tensor
-
-    subsolver_iters_hist: List[int]
+def _default_dist[M: Manifold](
+    p: Point[M] | torch.Tensor,
+    q: Point[M] | torch.Tensor,
+    conn: TangentConnection[M],
+    metric: MetricField[M],
+) -> float:
+    v = conn.log(p, q)[0]
+    return sqrt(metric(p).inner(v, v))
 
 
-@dataclass
-class RalmResult(CustomConstrSolverResult):
-    success: bool
-    p: torch.Tensor
-    iters: int
-    history: RalmHistory
-
-    @property
-    def result(self) -> ConstrSolverResult:
-        return ConstrSolverResult(
-            success=self.success,
-            p=self.p,
-            iters=self.iters,
-            history=ConstrSolverHistory(
-                p_hist=self.history.p_hist,
-                f_hist=self.history.f_hist,
-                gs_hist=self.history.gs_hist,
-                hs_hist=self.history.hs_hist,
-                g_mults_hist=self.history.g_mults_hist,
-                h_mults_hist=self.history.h_mults_hist,
-            ),
-        )
+def _eval_constrs_tens[M: Manifold](p: Point[M] | torch.Tensor, constrs: Sequence[ScalarField[M]]) -> torch.Tensor:
+    constr_vals = torch.zeros((len(constrs)))
+    for i in range(len(constrs)):
+        constr_vals[i] = constrs[i](p).components.item()
+    return constr_vals
 
 
-class AugmentedLagrangian(MfldFunc):
-    def __init__(
-        self,
-        f: MfldFunc,
-        gs: List[MfldFunc],
-        hs: List[MfldFunc],
-        g_mults: List[float],
-        h_mults: List[float],
-        penalty: float,
-    ):
-        self._f = f
-        self._gs = gs
-        self._hs = hs
-        self._g_mults = g_mults
-        self._h_mults = h_mults
-        self._penalty = penalty
+def ralm[M: Manifold](
+    f: ScalarField[M],
+    ineqs: Sequence[ScalarField[M]],
+    eqs: Sequence[ScalarField[M]],
+    p0: Point[M] | torch.Tensor,
+    metric: MetricField[M],
+    conn: TangentConnection[M] | None = None,
+    retr: Retraction[M] | None = None,
+    dist: Distance[M] | None = None,
+    subsolver_method: UnconstrOptimFn = rgd,
+    subsolver_args: dict = {},
+    tol: float = 1e-3,
+    max_iters: int = 1000,
+    save_hist: bool = False,
+    show_debug: bool = False,
+    *,
+    penalty_start: float = 0.1,
+    penalty_growth: float = 1.1,  # > 1
+    ineq_mult_start: float = 0.0,
+    ineq_mults_min: float | torch.Tensor = -torch.inf,
+    ineq_mults_max: float | torch.Tensor = torch.inf,
+    eq_mult_start: float = 0.0,
+    eq_mults_min: float | torch.Tensor = -torch.inf,
+    eq_mults_max: float | torch.Tensor = torch.inf,
+    subsolver_tol_start: float = 1e-1,
+    subsolver_tol_min: float = 1e-3,
+    subsolver_tol_decay: float = 0.5,
+    subsolver_max_iters=100,
+    ratio: float = 0.8,
+) -> ConstrResult[M]:
+    if not ScalarField[f.bundle.base].compatible_field(f):
+        raise ValueError("f must be a scalar field")
+    for ineq in ineqs:
+        if not ScalarField[f.bundle.base].compatible_field(ineq):
+            raise ValueError("all inequality constraints must be scalar fields")
+    for eq in eqs:
+        if not ScalarField[f.bundle.base].compatible_field(eq):
+            raise ValueError("all equality constraints must be scalar fields")
 
-    def value(
-        self, p: torch.Tensor, cfg: ComputeMfld, *args: *FuncArgs
-    ) -> torch.Tensor:
-        g_sum = sum(
-            torch.maximum(
-                torch.tensor(0.0), g_mult / self._penalty + g.value(p, cfg, *args)
-            )
-            ** 2
-            for g, g_mult in zip(self._gs, self._g_mults)
-        )
-        h_sum = sum(
-            (h.value(p, cfg, *args) + h_mult / self._penalty) ** 2
-            for h, h_mult in zip(self._hs, self._h_mults)
-        )
-        aug_value = self._f.value(p, cfg, *args) + self._penalty / 2.0 * (g_sum + h_sum)
-        return aug_value
+    if conn is None:
+        conn = metric.levi_civita()
+    if retr is None:
+        retr = lambda p, v: conn.exp(p, v)[0]
+    if dist is None:
+        dist = lambda p, q: _default_dist(p, q, conn, metric)
 
-    def diff(self, p: torch.Tensor, cfg: ComputeMfld, *args: *FuncArgs) -> torch.Tensor:
-        g_vals = [g.value(p, cfg, *args) for g in self._gs]
+    num_ineqs = len(ineqs)
+    num_eqs = len(eqs)
+    is_constrained = num_ineqs > 0 or num_eqs > 0
 
-        g_diff_sum = torch.zeros_like(p)
-        g_diff_sum += sum(
-            (
-                2.0 * (g_mult / self._penalty + g_val) * g.diff(p, cfg, *args)
-                if g_val + g_mult / self._penalty >= 0.0
-                else 0.0
-            )
-            for g, g_mult, g_val in zip(self._gs, self._g_mults, g_vals)
-        )
+    p = Point[f.bundle.base](p0)
+    penalty = penalty_start
+    ineq_mults = ineq_mult_start * torch.ones((num_ineqs,))
+    eq_mults = eq_mult_start * torch.ones((num_eqs,))
 
-        h_diff_sum = torch.zeros_like(p)
-        h_diff_sum += sum(
-            2.0
-            * (h_mult / self._penalty + h.value(p, cfg, *args))
-            * h.diff(p, cfg, *args)
-            for h, h_mult in zip(self._hs, self._h_mults)
-        )
-        aug_diff_value = self._f.diff(p, cfg, *args) + self._penalty / 2.0 * (
-            g_diff_sum + h_diff_sum
-        )
+    # setup parameterized fields (to be modified during optimization)
+    penalty_field = FloatField[f.bundle.base](penalty)
+    ineq_mult_fields = [FloatField[f.bundle.base](ineq_mults[i].item()) for i in range(num_ineqs)]
+    eq_mult_fields = [FloatField[f.bundle.base](eq_mults[i].item()) for i in range(num_eqs)]
 
-        # print(f"p: {p}")
-        # print(f"g diff sum: {g_diff_sum}")
-        # print(f"aug_lagr diff: {aug_diff_value}")
-
-        return aug_diff_value
-
-    def hess(self, p: torch.Tensor, cfg: ComputeMfld, *args: *FuncArgs) -> torch.Tensor:
-        g_vals = [g.value(p, cfg, *args) for g in self._gs]
-        g_diff_vals = [g.diff(p, cfg, *args) for g in self._gs]
-
-        h_vals = [h.value(p, cfg, *args) for h in self._hs]
-        h_diff_vals = [h.diff(p, cfg, *args) for h in self._hs]
-
-        g_hess_sum = sum(
-            (
-                2.0 * torch.outer(g_diff, g_diff)
-                + 2.0 * (g_val + g_mult / self._penalty) * g.hess(p, cfg, *args)
-                if g_val + g_mult / self._penalty >= 0.0
-                else 0.0
-            )
-            for g, g_mult, g_val, g_diff in zip(
-                self._gs, self._g_mults, g_vals, g_diff_vals
-            )
-        )
-        h_hess_sum = sum(
-            2.0 * torch.outer(h_diff, h_diff)
-            + 2.0 * (h_val / self._penalty) * h.hess(p, cfg, *args)
-            for h, h_mult, h_val, h_diff in zip(
-                self._hs, self._h_mults, h_vals, h_diff_vals
-            )
-        )
-        aug_hess_value = self._f.hess(p, cfg, *args) + self._penalty / 2.0 * (
-            g_hess_sum + h_hess_sum
-        )
-        return aug_hess_value
-
-    @property
-    def penalty(self):
-        return self._penalty
-
-    @property
-    def g_mults(self):
-        return self._g_mults
-
-    @property
-    def h_mults(self):
-        return self._h_mults
-
-    @penalty.setter
-    def penalty(self, penalty: float):
-        self._penalty = penalty
-
-    @g_mults.setter
-    def g_mults(self, g_mults: List[float]):
-        self._g_mults = g_mults
-
-    @h_mults.setter
-    def h_mults(self, h_mults: List[float]):
-        self._h_mults = h_mults
-
-
-def ralm(
-    f: MfldFunc,
-    gs: List[MfldFunc],
-    hs: List[MfldFunc],
-    p0: torch.Tensor,
-    mfld: ComputeMfld,
-    cfg: RalmCfg,
-    *args: *FuncArgs,
-) -> RalmResult:
-    g_mults = cfg.g_mult_0 * torch.ones((len(gs),))
-    h_mults = cfg.h_mult_0 * torch.ones((len(hs),))
-
-    p = p0.clone()
-    sigma: Optional[torch.Tensor] = None  # no value at start
-
-    # track the various histories over time
-    p_hist = []
-    f_hist = []
-    gs_hist = []
-    hs_hist = []
-    acc_hist = []
-    penalty_hist = []
-    g_mults_hist = []
-    h_mults_hist = []
-    subsolver_iters_hist = []
-
-    penalty = cfg.penalty_0
-    acc_tol = cfg.acc_tol_0
-
-    subsolver_cfg = copy(cfg.subsolver_cfg)  # we will update this over time
-
-    # sets up the augmented lagrangian function which will be minimized by the selected subsolver optimization method
-    # prior to the update of the other parameters and the lagrangian multipliers
-    augm_lagr = AugmentedLagrangian(
-        f, gs, hs, g_mults.tolist(), h_mults.tolist(), penalty
+    # setup the augmented lagrangian
+    # TODO: refactor composition to allow using ints to allow using sum directly (w/out the explicit float zero here)
+    ineq_constrs = sum(
+        ScalarField.max(0.0, ineq + mult / penalty_field) ** 2 for ineq, mult in zip(ineqs, ineq_mult_fields)
     )
+    eq_constrs = sum((eq + mult / penalty_field) ** 2 for eq, mult in zip(eqs, eq_mult_fields))
+    aug_lagr = f + penalty_field / 2.0 * (ineq_constrs + eq_constrs)
 
-    successfully_converged = False
-    idx_counter = 0
+    subsolver_tol = subsolver_tol_start
 
-    for idx in range(cfg.max_iters):
-        # updates the expected accuracy inside the subsolver
-        subsolver_cfg.criterion_eps = (
-            acc_tol  # updates the expected accuracy inside the subsolver
-        )
+    f_val = f(p)
+    ineqs_eval = _eval_constrs_tens(p, ineqs)
+    eqs_eval = _eval_constrs_tens(p, eqs)
+    sigma: torch.Tensor
 
-        # updates the subproblem
-        augm_lagr.g_mults = g_mults.tolist()
-        augm_lagr.h_mults = h_mults.tolist()
-        augm_lagr.penalty = penalty
+    if show_debug:
+        print(f"[ralm] initial: p={p.p}, f={f_val.components}")
 
-        # attempts to solve the subproblem
-        subsolver_result = cfg.subsolver_method(
-            augm_lagr, p, mfld, subsolver_cfg, *args
-        )
-        if not subsolver_result.success:
-            print(f"subsolver failed: {subsolver_result}")
-            return RalmResult(
-                success=False,
-                p=subsolver_result.p,
-                iters=idx + 1,
-                history=RalmHistory(
-                    p_hist=torch.stack(p_hist),
-                    f_hist=torch.tensor(f_hist),
-                    gs_hist=torch.stack(gs_hist),
-                    hs_hist=torch.stack(hs_hist),
-                    acc_hist=torch.tensor(acc_hist),
-                    penalty_hist=torch.tensor(penalty_hist),
-                    g_mults_hist=torch.stack(g_mults_hist),
-                    h_mults_hist=torch.stack(h_mults_hist),
-                    subsolver_iters_hist=subsolver_iters_hist,
-                ),
-            )
+    f_hist = [f_val.components.item()] if save_hist else None
+    ineqs_eval_hist = [ineqs_eval] if save_hist else None
+    eqs_eval_hist = [eqs_eval] if save_hist else None
+    p_hist = [p.p] if save_hist else None
 
-        # assume that the subsolver was successful after this point
-        next_p = subsolver_result.p
+    success = False
+    i: int = 0
+    for i in range(max_iters):
+        if show_debug:
+            print(f"[ralm] i={i}, p={p.p}, f={f_val.components}")
 
-        # print(f"next_p: {next_p}")
-
-        # check convergence criterion
-        if mfld.dist(p, next_p) < cfg.min_step and acc_tol <= cfg.acc_tol_min:
-            successfully_converged = True
-
-        # convergence has not been achieved, proceed with updates
-
-        # if convergence has not been achieved then we update the multipliers, etc.
-        current_h_vals = torch.tensor([h.value(p, mfld, *args) for h in hs])
-
-        next_g_vals = torch.tensor([g.value(next_p, mfld, *args) for g in gs])
-        next_h_vals = torch.tensor([h.value(next_p, mfld, *args) for h in hs])
-
-        next_h_mults = torch.clamp(
-            h_mults + penalty * torch.tensor(next_h_vals),
-            cfg.h_mult_min,
-            cfg.h_mult_max,
-        )
-        next_g_mults = torch.clamp(
-            g_mults + penalty * torch.tensor(next_g_vals),
-            cfg.g_mult_min,
-            cfg.g_mult_max,
-        )
-
-        # print(f"\tnext_g_mults: {next_g_mults}")
-        # print(f"\tnext_h_mults: {next_h_mults}")
-
-        next_sigma = torch.maximum(next_g_vals, -g_mults / penalty)
-        next_acc = max(cfg.acc_tol_min, cfg.acc_decay * acc_tol)
-
-        num_gs = len(gs)  # for clarity
-        num_hs = len(hs)
-
-        if idx == 0 or (
-            # NOTE: relies on short-circuiting for sigma to not be None at this point (only present here for typing)
-            sigma is not None
-            and torch.any(
-                torch.maximum(
-                    torch.unsqueeze(torch.tensor(next_h_vals).abs(), -1).repeat(
-                        (1, num_gs)
-                    ),  # stacks horiz
-                    torch.unsqueeze(next_sigma.abs(), 0).repeat(
-                        (num_hs, 1)
-                    ),  # stacks vertically
-                )
-                <= cfg.ratio
-                * torch.maximum(
-                    torch.unsqueeze(torch.tensor(current_h_vals).abs(), -1).repeat(
-                        (1, num_gs)
-                    ),  # stacks horiz
-                    torch.unsqueeze(sigma.abs(), 0).repeat(
-                        (num_hs, 1)
-                    ),  # stacks vertically
-                )
-            )
-        ):
-            next_penalty = penalty  # no change in penalty
-        else:
-            next_penalty = cfg.penalty_growth * penalty
-
-        # update the values
-        p = next_p
-
-        g_mults = next_g_mults
-        h_mults = next_h_mults
-
-        sigma = next_sigma
-        acc_tol = next_acc
-        penalty = next_penalty
-
-        # update the histories
-
-        next_f_val = f.value(next_p, mfld, *args)
-
-        p_hist.append(p)
-        f_hist.append(next_f_val)
-        gs_hist.append(next_g_vals)
-        hs_hist.append(next_h_vals)
-        acc_hist.append(next_acc)
-        penalty_hist.append(penalty)
-        g_mults_hist.append(g_mults)
-        h_mults_hist.append(h_mults)
-        subsolver_iters_hist.append(subsolver_result.iters)
-
-        # breaks after updating history
-        idx_counter += 1
-        if successfully_converged:
+        if success:
             break
 
-    return RalmResult(
-        success=successfully_converged,
+        result = subsolver_method(
+            aug_lagr,
+            p,
+            metric,
+            conn,
+            retr,
+            subsolver_tol,
+            subsolver_max_iters,
+            False,
+            show_debug,
+            **subsolver_args,
+        )
+        if not result.success:
+            break
+
+        p_next: Point = result.p  # type: ignore
+        if dist(p, p_next) < tol:
+            if show_debug:
+                print("[ralm] succeeded")
+            success = True
+
+        next_subsolver_tol = max(subsolver_tol_min, subsolver_tol_decay * subsolver_tol)  # type: ignore
+        if is_constrained:
+            next_ineqs_eval = _eval_constrs_tens(p_next, ineqs)
+            next_eqs_eval = _eval_constrs_tens(p_next, eqs)
+            next_ineq_mults = torch.clip(
+                ineq_mults + penalty * next_ineqs_eval,
+                ineq_mults_min,  # type: ignore
+                ineq_mults_max,  # type: ignore
+            )
+            next_eq_mults = torch.clip(
+                eq_mults + penalty * next_eqs_eval,
+                eq_mults_min,  # type: ignore
+                eq_mults_max,  # type: ignore
+            )
+
+            next_sigma = torch.max(next_ineqs_eval, -ineq_mults / penalty)
+
+            next_penalty = penalty
+            if i > 0 and max([*torch.abs(next_eqs_eval), *torch.abs(next_sigma)]) > ratio * max(
+                [*torch.abs(eqs_eval), *torch.abs(sigma)]  # type: ignore
+            ):
+                next_penalty *= penalty_growth
+
+            p = p_next
+            f_val = f(p)
+            ineqs_eval = next_ineqs_eval
+            eqs_eval = next_eqs_eval
+
+            penalty = next_penalty
+            sigma = next_sigma
+            subsolver_tol = next_subsolver_tol
+            ineq_mults = next_ineq_mults
+            eq_mults = next_eq_mults
+
+            # update values inside the float fields thereby changing the augmented lagrangian
+            penalty_field.value = penalty
+            for ineq_mult_field, ineq_mult in zip(ineq_mult_fields, ineq_mults):
+                ineq_mult_field.value = ineq_mult
+            for eq_mult_field, eq_mult in zip(eq_mult_fields, eq_mults):
+                eq_mult_field.value = eq_mult
+
+        if save_hist:
+            f_hist.append(f_val.components.item())  # type: ignore
+            ineqs_eval_hist.append(ineqs_eval)  # type: ignore
+            eqs_eval_hist.append(eqs_eval)  # type: ignore
+            p_hist.append(p.p)  # type: ignore
+
+    if show_debug:
+        print(f"[ralm] final p={p.p}, f={f_val.components}")
+
+    # evaluate the constraints as scalar types
+    ineqs_val = [ineq(p) for ineq in ineqs]
+    eqs_val = [eq(p) for eq in eqs]
+
+    result = ConstrResult(
+        success=success,
+        num_iters=i,
         p=p,
-        iters=idx_counter,
-        history=RalmHistory(
-            p_hist=torch.stack(p_hist),
-            f_hist=torch.tensor(f_hist),
-            gs_hist=torch.stack(gs_hist),
-            hs_hist=torch.stack(hs_hist),
-            acc_hist=torch.tensor(acc_hist),
-            penalty_hist=torch.tensor(penalty_hist),
-            g_mults_hist=torch.stack(g_mults_hist),
-            h_mults_hist=torch.stack(h_mults_hist),
-            subsolver_iters_hist=subsolver_iters_hist,
-        ),
+        f=f_val,
+        ineqs=ineqs_val,
+        eqs=eqs_val,
     )
+    if save_hist:
+        result.add_hist(f_hist, ineqs_hist, eqs_hist, p_hist)  # type: ignore
+    return result

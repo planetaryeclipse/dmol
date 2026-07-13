@@ -19,9 +19,10 @@ class UnconstrResult[M: Manifold]:
         num_samples = len(f_hist)  # type: ignore
         f_hist_tens = torch.zeros((num_samples,))
         p_hist_tens = torch.zeros((self.p.manifold.dim, num_samples))  # type: ignore
+
         for i in range(num_samples):
-            f_hist_tens[i] = f_hist[i]  # type: ignore
-            p_hist_tens[i, :] = p_hist[i]  # type: ignore
+            f_hist_tens[i] = f_hist[i]
+            p_hist_tens[:, i] = p_hist[i]
 
         self.f_hist = f_hist_tens
         self.p_hist = p_hist_tens

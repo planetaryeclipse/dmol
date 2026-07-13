@@ -64,17 +64,21 @@ def rtr[M: Manifold](
     metric: MetricField[M],
     conn: TangentConnection[M] | None = None,
     retr: Callable[[Point[M], Vec[M]], Point[M]] | None = None,
+    max_iters: int = 1000,
+    save_hist: bool = False,
+    show_debug: bool = False,
+    *,
+    tol: float = 1e-3,
     radius_max: float = 0.5,
     radius_start: float = 0.1,  # in (0, radius_max)
     quality_step_thresh: float = 0.15,  # in [0, 0.25]
     h: Callable[[Vec[M]], Vec[M]] = lambda p: p,  # symmetric
-    tol: float = 1e-3,
     radius_eps: float = 1e-6,
     quality_eps: float = 1e-6,
     default_retr_damp: float = 0.9,
-    max_iters: int = 1000,
-    save_hist: bool = False,
 ) -> UnconstrResult:
+    if not ScalarField[f.bundle.base].compatible_field(f):
+        raise ValueError("f must be a scalar field")
 
     if conn is None:
         conn = metric.levi_civita()
@@ -88,12 +92,18 @@ def rtr[M: Manifold](
     f_val = f(p)
     radius = radius_start
 
+    if show_debug:
+        print(f"[rtr] initial: p={p.p}, f={f_val.components}")
+
     f_hist = [f_val.components.item()] if save_hist else None
     p_hist = [p.p] if save_hist else None
 
     success = False
     i: int = 0
     for i in range(max_iters):
+        if show_debug:
+            print(f"[rtr] i={i}, p={p.p}, f={f_val.components}")
+
         if success:
             break
 
@@ -138,12 +148,9 @@ def rtr[M: Manifold](
             p_next = p_retr
         f_val_next = f(p_next)
 
-        print(
-            f"p={p_next.p}, f={f_val_next.components}, f_grad={f_diff_cov.components}, radius={radius}, quality={quality}, eta={eta_np}, eta_norm={np.linalg.norm(eta_np)}"
-        )
-
         if torch.linalg.norm(p_next.p - p.p, ord=torch.inf) <= tol:
-            print(f"succeeded")
+            if show_debug:
+                print("[rtr] succeeded")
             success = True
 
         radius = radius_next
@@ -153,6 +160,9 @@ def rtr[M: Manifold](
         if save_hist:
             f_hist.append(f_val.components.item())  # type: ignore
             p_hist.append(p.p)  # type: ignore
+
+    if show_debug:
+        print(f"[rtr] final: p={p.p}, f={f_val.components}")
 
     result = UnconstrResult(success=success, p=p, f=f_val, num_iters=i)
     if save_hist:

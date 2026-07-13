@@ -4,7 +4,7 @@ import pytest
 from torch.testing import assert_close
 
 from dmol.diff_mfld.bundle.tensor import Cov
-from dmol.diff_mfld.field.field_types import FloatField, LambdaField
+from dmol.diff_mfld.field.field_types import FloatField, LambdaField, ScalarField
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.vector_bundle import (
     ScalarBundle,
@@ -60,6 +60,27 @@ class TestFloatField:
         assert_tensors_equiv(f1_covar(p), Cov[M](torch.zeros((2,))))
         assert_tensors_equiv(f2_covar(p), Cov[M](torch.zeros((2,))))
 
+    def test_change_value(self):
+        M = Manifold[2]
+        f = FloatField[M](2.0)
+
+        p = Point[M](torch.tensor([2.0, 3.0]))
+        assert_tensors_equiv(f(p), 2.0)
+
+        f.value = 3.0
+        assert_tensors_equiv(f(p), 3.0)
+
+    def test_change_under_composition(self):
+        M = Manifold[2]
+        f = FloatField[M](2.0)
+        f_pow = f**2
+
+        p = Point[M](torch.tensor([2.0, 3.0]))
+        assert_tensors_equiv(f_pow(p), 2.0**2)
+
+        f.value = 3.0
+        assert_tensors_equiv(f_pow(p), 3.0**2)
+
 
 class TestFieldOps:
     def test_add(self):
@@ -97,6 +118,52 @@ class TestFieldOps:
 
         assert_close(result_v_s2(p).components, v(p).components * s2)
         assert_close(result_s2_v(p).components, s2 * v(p).components)
+
+    def test_div(self):
+        M = Manifold[2]
+        S = LambdaField[ScalarBundle[M]]
+        s1 = S(lambda x, y: coord_repr(x * y))  # type: ignore
+        s2 = S(lambda x, y: coord_repr(x + y))  # type: ignore
+
+        s_div_1 = s1 / s2
+        s_div_2 = s2 / s1
+
+        p = Point[M](torch.tensor([1.0, 2.0]))
+
+        assert_tensors_equiv(s_div_1(p), 2.0 / 3.0)
+        assert_tensors_equiv(s_div_2(p), 3.0 / 2.0)
+
+    def test_div_float(self):
+        M = Manifold[2]
+        S = LambdaField[ScalarBundle[M]]
+        s = S(lambda x, y: coord_repr(x * y))  # type: ignore
+        s_div = 1.0 / s
+
+        p = Point[M](torch.tensor([1.0, 2.0]))
+        assert_tensors_equiv(s_div(p), 0.5)
+
+    def test_max(self):
+        M = Manifold[2]
+        S = LambdaField[ScalarBundle[M]]
+        s1 = S(lambda x, y: coord_repr(x * y))  # type: ignore
+        s2 = S(lambda x, y: coord_repr(x + y))  # type: ignore
+
+        max_s = ScalarField.max(s1, s2)
+
+        p1 = Point[M](torch.tensor([0.5, 0.5]))
+        p2 = Point[M](torch.tensor([2.0, 2.0]))
+
+        assert_tensors_equiv(max_s(p1), 1.0)  # add
+        assert_tensors_equiv(max_s(p2), 4.0)  # multiply
+
+    def test_power(self):
+        M = Manifold[2]
+        S = LambdaField[ScalarBundle[M]]
+        s = S(lambda x, y: coord_repr(x * y))  # type: ignore
+        s_pow = s**2
+
+        p = Point[M](torch.tensor([1.0, 2.0]))
+        assert_tensors_equiv(s_pow(p), 4.0)
 
 
 class TestCovarDeriv:
@@ -163,3 +230,75 @@ class TestCovarDeriv:
                 coord_mean=2,
                 coord_std=5,
             )
+
+    def test_div_covar_nonlinear(self):
+        M = Manifold[2]
+        S = LambdaField[ScalarBundle[M]]
+        s1 = S(lambda x, y: coord_repr(x * y))  # type: ignore
+        s2 = S(lambda x, y: coord_repr(x + y))  # type: ignore
+
+        s_div_1 = s1 / s2
+        s_div_2 = s2 / s1
+
+        metric = MetricLambdaField[M](
+            lambda x, y: coord_repr(
+                [
+                    [1.0 + x**2, 0.0],  # type: ignore
+                    [0.0, 1.0 + y**2],  # type: ignore
+                ]
+            )
+        )
+        conn = metric.levi_civita()
+        s1_covar = conn.total_covar(s1)
+        s2_covar = conn.total_covar(s2)
+        s_div_1_covar = conn.total_covar(s_div_1)
+        s_div_2_covar = conn.total_covar(s_div_2)
+
+        p = Point[M](torch.tensor([1.0, 2.0]))
+        assert_tensors_equiv(s_div_1_covar(p), 1.0 / s2(p) * s1_covar(p) + s1(p) / s2(p) ** 2 * s2_covar(p))
+        assert_tensors_equiv(s_div_2_covar(p), 1.0 / s1(p) * s2_covar(p) + s2(p) / s1(p) ** 2 * s1_covar(p))
+
+    def test_max_covar_nonlinear(self):
+        M = Manifold[2]
+        S = LambdaField[ScalarBundle[M]]
+        s1 = S(lambda x, y: coord_repr(x * y))  # type: ignore
+        s2 = S(lambda x, y: coord_repr(x + y))  # type: ignore
+        max_s = ScalarField.max(s1, s2)
+
+        metric = MetricLambdaField[M](
+            lambda x, y: coord_repr(
+                [
+                    [1.0 + x**2, 0.0],  # type: ignore
+                    [0.0, 1.0 + y**2],  # type: ignore
+                ]
+            )
+        )
+        conn = metric.levi_civita()
+        max_s_covar = conn.total_covar(max_s)
+
+        p1 = Point[M](torch.tensor([0.5, 0.5]))
+        p2 = Point[M](torch.tensor([2.0, 2.0]))
+
+        assert_tensors_equiv(max_s_covar(p1), Cov[M](torch.tensor([1.0, 1.0])))  # add
+        assert_tensors_equiv(max_s_covar(p2), Cov[M](torch.tensor([2.0, 2.0])))  # multiply
+
+    def test_power_covar_nonlinear(self):
+        M = Manifold[2]
+        S = LambdaField[ScalarBundle[M]]
+        s = S(lambda x, y: coord_repr(x * y))  # type: ignore
+        s_pow = s**2
+
+        metric = MetricLambdaField[M](
+            lambda x, y: coord_repr(
+                [
+                    [1.0 + x**2, 0.0],  # type: ignore
+                    [0.0, 1.0 + y**2],  # type: ignore
+                ]
+            )
+        )
+        conn = metric.levi_civita()
+        s_pow_covar = conn.total_covar(s_pow)
+
+        p = Point[M](torch.tensor([1.0, 2.0]))
+        print(s_pow_covar(p).components)
+        assert_tensors_equiv(s_pow_covar(p), 2.0 * 2.0 * Cov[M](torch.tensor([2.0, 1.0])))

@@ -1,3 +1,5 @@
+from math import sqrt
+
 import torch
 
 from typing import Union, Callable, override
@@ -101,6 +103,10 @@ class Metric(Tensor[TensorBundle[0, 2]]):
         Vec[self.bundle.base].validate_tensor(u)
         Vec[self.bundle.base].validate_tensor(v)
         return (u.components @ self.components @ v.components).item()
+
+    def norm(self, u: Vec) -> float:
+        inner = self.inner(u, u)
+        return sqrt(inner)
 
     @property
     def inv(self):

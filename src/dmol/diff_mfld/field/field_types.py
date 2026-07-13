@@ -3,7 +3,7 @@ from typing import Callable, override
 
 import torch
 
-from dmol.diff_mfld.bundle.tensor import Scalar, Tensor
+from dmol.diff_mfld.bundle.tensor import Scalar
 from dmol.diff_mfld.bundle.vector_bundle import CotangentBundle, ScalarBundle, TangentBundle
 from dmol.diff_mfld.field.base import Field
 from dmol.diff_mfld.mfld import Point
@@ -14,6 +14,10 @@ class ScalarField(Field[ScalarBundle]):
     @override
     def __call__(self, p: Point | torch.Tensor) -> Scalar:
         return super().__call__(p)  # type: ignore
+
+    @staticmethod
+    def max(lhs: Field | float, rhs: Field | float) -> Field | float:
+        raise NotImplementedError()  # to be overriden
 
 
 class FloatField(ScalarField):
@@ -26,6 +30,17 @@ class FloatField(ScalarField):
 
     def _eval_partials(self, p: torch.Tensor) -> torch.Tensor:
         return torch.zeros_like(p)
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, value: float):
+        self._value = value
+
+    def __repr__(self) -> str:
+        return f"FloatField[{self._value}]"
 
 
 class VectorField(Field[TangentBundle]):
@@ -66,3 +81,6 @@ class LambdaField(Field):
         else:
             components = self._field_fn(p)
         return components
+
+    def __repr__(self) -> str:
+        return f"LambdaField[{self._tensor}]"

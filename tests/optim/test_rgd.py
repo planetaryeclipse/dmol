@@ -22,17 +22,14 @@ class TestRiemGradDescent:
 
         metric = EuclideanMetricField[M]()
 
-        cost = S(lambda x, y: coord_repr(1.0 + x**2 + y**2))  # type: ignore
-        p0 = Point[M](torch.tensor([1.0, 2.0]))
-
         result = rgd(
             cost,  # type: ignore
             p0,
             metric,
-            damp=0.1,
             tol=1e-4,
             max_iters=1000,
             save_hist=False,
+            damp=0.1,
         )
         assert result.success
         assert result.num_iters > 0
@@ -60,10 +57,10 @@ class TestRiemGradDescent:
             cost,  # type: ignore
             p0,
             metric,
-            damp=0.1,
             tol=1e-4,
             max_iters=1000,
             save_hist=False,
+            damp=0.1,
         )
         assert result.success
         assert result.num_iters > 0
@@ -81,19 +78,16 @@ class TestRiemGradDescent:
 
         metric = EuclideanMetricField[M]()
 
-        cost = S(lambda x, y: coord_repr(1.0 + x**2 + y**2))  # type: ignore
-        p0 = Point[M](torch.tensor([1.0, 2.0]))
-
         retr = lambda p, v: approx_exp_map(p, v, metric.levi_civita(), approx_order=approx_order)
         result = rgd(
             cost,  # type: ignore
             p0,
             metric,
             retr=retr,
-            damp=0.1,
             tol=1e-4,
             max_iters=1000,
             save_hist=False,
+            damp=0.1,
         )
         assert result.success
         assert result.num_iters > 0
@@ -119,10 +113,10 @@ class TestRiemGradDescent:
             p0,
             metric,
             retr=retr,
-            damp=0.1,
             tol=1e-4,
             max_iters=1000,
             save_hist=False,
+            damp=0.1,
         )
         assert result.success
         assert result.num_iters > 0

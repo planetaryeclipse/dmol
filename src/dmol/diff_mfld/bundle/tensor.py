@@ -121,6 +121,32 @@ class Tensor(metaclass=PartialSpec):
     def __rmul__(self, other):
         return self.__mul__(other)
 
+    def __truediv__(self, other):
+        if isinstance(other, Tensor):
+            if other.bundle.rank == 0:
+                return self.__class__(self.components / other.components)
+            else:
+                raise ValueError("tensor is only divisble by a scalar")
+        elif type(other) is float:
+            return self.__class__(self.components / other)
+        raise NotImplemented()
+
+    def __rtruediv__(self, other):
+        if self.bundle.rank == 0:
+            if isinstance(other, Tensor):
+                return other.__class__(other.components / self.components)
+            elif type(other) is float:
+                return self.__class__(other / self.components)
+            raise NotImplemented()
+        raise ValueError("divisor tensor must be a scalar")
+
+    def __pow__(self, other):
+        if self.bundle.rank == 0:
+            if type(other) is int:
+                return self.__class__(self.components**other)
+            raise ValueError("power must be an integer")
+        raise ValueError("only scalars can be raised to a power")
+
 
 Scalar = Tensor[ScalarBundle]
 Vec = Tensor[TangentBundle]

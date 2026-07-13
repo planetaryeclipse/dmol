@@ -97,16 +97,31 @@ class Field(metaclass=PartialSpec):
         partials = jacrev(self._eval)(p)
         return partials
 
-    # to be overridden
+    # to be overridden (present here for type checking)
 
     def __add__(self, other):
         raise NotImplementedError()
 
+    def __radd__(self, other):
+        raise NotImplementedError()
+
     def __sub__(self, other):
+        raise NotImplementedError()
+
+    def __rsub__(self, other):
         raise NotImplementedError()
 
     def __mul__(self, other):
         raise NotImplementedError()
 
     def __rmul__(self, other):
+        raise NotImplementedError()
+
+    def __truediv__(self, other):
+        raise NotImplementedError()
+
+    def __rtruediv__(self, other):
+        raise NotImplementedError()
+
+    def __pow__(self, other):
         raise NotImplementedError()
