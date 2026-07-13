@@ -7,7 +7,7 @@ from dmol.diff_mfld.bundle.vector_bundle import TangentBundle
 from dmol.diff_mfld.connection.base import Connection, ParallelTranspVecMethod
 from dmol.diff_mfld.connection.covar_diff import _TotalCovarField
 from dmol.diff_mfld.connection.methods.geod_ivp_bvp import bvp_log_map, ivp_exp_map
-from dmol.diff_mfld.connection.methods.pt_vec import ivp_pt_vec
+from dmol.diff_mfld.connection.methods.parl_transp import ivp_parl_transp_vec
 from dmol.diff_mfld.curve import Curve
 from dmol.diff_mfld.field.base import Field
 from dmol.diff_mfld.field.field_types import VectorField
@@ -41,4 +41,4 @@ class TangentConnection(Connection[TangentBundle]):
     @abstractmethod
     def pt_vec(self, u: Vec, curve: Curve, method: ParallelTranspVecMethod | None = None) -> Vec:
         Tensor[self.bundle].validate_tensor(u)
-        return ivp_pt_vec(u, curve, self)
+        return ivp_parl_transp_vec(u, curve, self)

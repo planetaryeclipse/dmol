@@ -8,7 +8,7 @@ from dmol.diff_mfld.bundle.tensor import Tensor, Vec
 from dmol.diff_mfld.bundle.vector_bundle import TensorBundle
 from dmol.diff_mfld.connection.methods.geod_ivp_bvp import bvp_log_map
 from dmol.diff_mfld.connection.methods.geod_approx import approx_log_map
-from dmol.diff_mfld.connection.methods.log_diff import approx_log_covar
+from dmol.diff_mfld.connection.methods.geod_log_diff import approx_log_covar
 
 
 class _IncludesCurve(Enum):

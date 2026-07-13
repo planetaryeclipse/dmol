@@ -1,30 +1,11 @@
 import torch
-import numpy as np
 
 from dmol.diff_mfld.connection.base import Connection
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.tensor import Tensor, Vec
 from dmol.diff_mfld.bundle.vector_bundle import TensorBundle
 
-from dmol.diff_mfld.connection.methods.geod_approx import (
-    _f1_geod,
-    _f2_geod,
-    _f3_geod,
-    _f4_geod,
-    _approx_log_o1,
-    _approx_log_o2,
-    _approx_log_o3,
-    _approx_log_o4,
-    approx_log_map,
-)
-
-from dmol.diff_mfld.connection.methods.geod_ivp_bvp import bvp_log_map
-from dmol.diff_mfld.riemann import EuclideanMetricField, MetricLambdaField
-
-
-def _f1_log_diff(q: torch.Tensor, p: torch.Tensor):
-    n = len(q)
-    return -torch.eye(n)
+from dmol.diff_mfld.connection.methods.geod_approx import _f2_geod, _f3_geod
 
 
 def _f2_log_diff(
