@@ -6,7 +6,7 @@ from pytest import approx
 
 from dmol.diff_mfld.bundle.vector_bundle import ScalarBundle
 from dmol.diff_mfld.connection.methods.geod_approx import approx_exp_map, approx_log_map
-from dmol.diff_mfld.connection.methods.methods import LogMapMethod
+from dmol.diff_mfld.connection.methods.methods import DistanceMethod, ExpMapMethod, LogMapMethod
 from dmol.diff_mfld.field.field_types import LambdaField
 from dmol.diff_mfld.field.riem_fields import RiemSqrDist
 from dmol.diff_mfld.field.util import coord_repr
@@ -61,8 +61,8 @@ class TestRalm:
         metric = EuclideanMetricField[M]()
         conn = metric.levi_civita()
 
-        retr = lambda p, v: approx_exp_map(p, v, conn, approx_order)
-        dist = lambda p, q: metric(p).norm(approx_log_map(p, q, conn, approx_order))
+        retr = lambda p, v, conn: approx_exp_map(p, v, conn, approx_order)
+        dist = lambda p, q, metric, conn: metric(p).norm(approx_log_map(p, q, conn, approx_order))
         result = ralm(
             cost,  # type: ignore
             (),
@@ -169,8 +169,8 @@ class TestRalm:
             (),
             p0,
             metric,
-            retr=lambda p, v: approx_exp_map(p, v, conn, approx_order=1),
-            dist=lambda p, q: metric(p).norm(approx_log_map(p, q, conn, approx_order=1)),
+            retr=ExpMapMethod.APPROX_O1,
+            dist=DistanceMethod.APPROX_O1,
             subsolver_args={"damp": 0.1},
         )
         assert result.success

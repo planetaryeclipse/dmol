@@ -1,31 +1,11 @@
 import torch
 
-from typing import Callable, TypeVar, ParamSpec, Concatenate
-
+from dmol.diff_mfld.connection.methods.methods import ExpMapMethod
 from dmol.diff_mfld.field.field_types import ScalarField
 from dmol.diff_mfld.mfld import Manifold, Point
-from dmol.diff_mfld.bundle.tensor import Vec
-from dmol.diff_mfld.riemann import Metric, MetricField, TangentConnection
+from dmol.diff_mfld.riemann import MetricField, TangentConnection
+from dmol.optim.methods import Retraction
 from dmol.optim.unconstr.result import UnconstrResult
-
-type Retraction[M: Manifold] = Callable[[Point[M], Vec[M]], Point[M]]
-
-P = ParamSpec("P")
-type UnconstrOptimFn[M: Manifold, **P] = Callable[
-    Concatenate[
-        ScalarField[M],
-        Point[M] | torch.Tensor,
-        MetricField[M],
-        TangentConnection[M] | None,
-        Retraction[M] | None,
-        float,  # tolerance
-        int,  # max iterations
-        bool,  # save history
-        bool,  # show debug
-        P,  # other arguments
-    ],
-    UnconstrResult[M],
-]
 
 
 def rgd[M: Manifold](
@@ -33,7 +13,7 @@ def rgd[M: Manifold](
     p0: Point[M] | torch.Tensor,
     metric: MetricField[M],
     conn: TangentConnection[M] | None = None,
-    retr: Retraction[M] | None = None,
+    retr: Retraction[M] = ExpMapMethod.DEFAULT,
     tol: float = 1e-3,
     max_iters: int = 100,
     save_hist: bool = False,
@@ -46,9 +26,6 @@ def rgd[M: Manifold](
 
     if conn is None:
         conn = metric.levi_civita()
-    if retr is None:
-        # sets the retraction as the exponential map (ignore curve ouput)
-        retr = lambda p, v: conn.exp(p, v)[0]
     f_diff = conn.total_covar(f)
 
     p = Point[f.bundle.base](p0)
@@ -72,7 +49,7 @@ def rgd[M: Manifold](
         metric_tens = metric(p)
         f_grad = metric_tens.sharp(f_diff(p))
 
-        p_next, _ = conn.exp(p, -damp * f_grad)
+        p_next = retr(p, -damp * f_grad, conn)
         f_val_next = f(p_next)
 
         if torch.linalg.norm(p_next.p - p.p, ord=torch.inf) <= tol:

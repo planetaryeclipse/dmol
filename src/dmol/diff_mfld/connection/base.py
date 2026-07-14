@@ -19,16 +19,16 @@ if TYPE_CHECKING:
     from dmol.diff_mfld.connection.covar_diff import FieldCustomCovar
 
 
-class ExpMapMethod:
-    pass
+# class ExpMapMethod:
+#     pass
 
 
-class LogMapMethod:
-    pass
+# class LogMapMethod:
+#     pass
 
 
-class ParallelTranspVecMethod:
-    pass
+# class ParallelTranspVecMethod:
+#     pass
 
 
 @dataclass

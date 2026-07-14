@@ -1,44 +1,16 @@
-from typing import Callable, Concatenate, ParamSpec, Sequence
 from math import sqrt
+from typing import Sequence
 
 import torch
 
-from dmol.diff_mfld.bundle.tensor import Vec
+from dmol.diff_mfld.connection.methods.methods import Distance, DistanceMethod, ExpMapMethod, LogMapMethod
 from dmol.diff_mfld.connection.tangent import TangentConnection
 from dmol.diff_mfld.field.field_types import FloatField, ScalarField
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.riemann import MetricField
 from dmol.optim.constr.result import ConstrResult
-from dmol.optim.unconstr.rgd import UnconstrOptimFn, Retraction, rgd
-
-type Distance[M: Manifold] = Callable[[Point[M], Point[M]], float]
-
-P = ParamSpec("P")
-type ConstrOptimFn[M: Manifold, **P] = Callable[
-    Concatenate[
-        ScalarField[M],
-        Sequence[ScalarField[M]],  # ineqs
-        Sequence[ScalarField[M]],  # eqs
-        Point[M] | torch.Tensor,
-        MetricField[M],
-        TangentConnection[M] | None,
-        Retraction[M] | None,
-        Distance[M] | None,
-        UnconstrOptimFn,  # subsolver method
-        dict,  # subsolver args
-        P,
-    ]
-]
-
-
-def _default_dist[M: Manifold](
-    p: Point[M] | torch.Tensor,
-    q: Point[M] | torch.Tensor,
-    conn: TangentConnection[M],
-    metric: MetricField[M],
-) -> float:
-    v = conn.log(p, q)[0]
-    return sqrt(metric(p).inner(v, v))
+from dmol.optim.methods import Retraction, UnconstrOptimFn
+from dmol.optim.unconstr.rgd import rgd
 
 
 def _eval_constrs_tens[M: Manifold](p: Point[M] | torch.Tensor, constrs: Sequence[ScalarField[M]]) -> torch.Tensor:
@@ -55,15 +27,15 @@ def ralm[M: Manifold](
     p0: Point[M] | torch.Tensor,
     metric: MetricField[M],
     conn: TangentConnection[M] | None = None,
-    retr: Retraction[M] | None = None,
+    retr: Retraction[M] = ExpMapMethod.DEFAULT,
     dist: Distance[M] | None = None,
-    subsolver_method: UnconstrOptimFn = rgd,
-    subsolver_args: dict = {},
     tol: float = 1e-3,
     max_iters: int = 1000,
     save_hist: bool = False,
     show_debug: bool = False,
     *,
+    subsolver_method: UnconstrOptimFn = rgd,
+    subsolver_args: dict = {},
     penalty_start: float = 0.1,
     penalty_growth: float = 1.1,  # > 1
     ineq_mult_start: float = 0.0,
@@ -89,10 +61,8 @@ def ralm[M: Manifold](
 
     if conn is None:
         conn = metric.levi_civita()
-    if retr is None:
-        retr = lambda p, v: conn.exp(p, v)[0]
     if dist is None:
-        dist = lambda p, q: _default_dist(p, q, conn, metric)
+        dist = DistanceMethod.DEFAULT
 
     num_ineqs = len(ineqs)
     num_eqs = len(eqs)
@@ -156,7 +126,7 @@ def ralm[M: Manifold](
             break
 
         p_next: Point = result.p  # type: ignore
-        if dist(p, p_next) < tol:
+        if dist(p, p_next, metric, conn) < tol:
             if show_debug:
                 print("[ralm] succeeded")
             success = True
@@ -184,8 +154,6 @@ def ralm[M: Manifold](
             ):
                 next_penalty *= penalty_growth
 
-            p = p_next
-            f_val = f(p)
             ineqs_eval = next_ineqs_eval
             eqs_eval = next_eqs_eval
 
@@ -201,6 +169,9 @@ def ralm[M: Manifold](
                 ineq_mult_field.value = ineq_mult
             for eq_mult_field, eq_mult in zip(eq_mult_fields, eq_mults):
                 eq_mult_field.value = eq_mult
+
+        p = p_next
+        f_val = f(p)
 
         if save_hist:
             f_hist.append(f_val.components.item())  # type: ignore
@@ -223,6 +194,9 @@ def ralm[M: Manifold](
         ineqs=ineqs_val,
         eqs=eqs_val,
     )
+    result.ineq_mults = ineq_mults
+    result.eq_mults = eq_mults
+
     if save_hist:
         result.add_hist(f_hist, ineqs_hist, eqs_hist, p_hist)  # type: ignore
     return result

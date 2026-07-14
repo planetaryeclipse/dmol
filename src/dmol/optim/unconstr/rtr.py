@@ -4,10 +4,12 @@ import torch
 import numpy as np
 
 from dmol.diff_mfld.bundle.tensor import Scalar, Vec
+from dmol.diff_mfld.connection.methods.methods import ExpMapMethod
 from dmol.diff_mfld.connection.tangent import TangentConnection
 from dmol.diff_mfld.field.field_types import ScalarField
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.riemann import Metric, MetricField
+from dmol.optim.methods import Retraction
 from dmol.optim.unconstr.result import UnconstrResult
 
 from scipy.optimize import minimize, NonlinearConstraint
@@ -63,7 +65,7 @@ def rtr[M: Manifold](
     p0: Point[M] | torch.Tensor,
     metric: MetricField[M],
     conn: TangentConnection[M] | None = None,
-    retr: Callable[[Point[M], Vec[M]], Point[M]] | None = None,
+    retr: Retraction[M] = ExpMapMethod.DEFAULT,
     max_iters: int = 1000,
     save_hist: bool = False,
     show_debug: bool = False,
@@ -122,7 +124,7 @@ def rtr[M: Manifold](
             max_iters,
         )
 
-        p_retr = retr(p, eta)  # cache as expensive
+        p_retr = retr(p, eta, conn)  # cache as expensive
 
         # update confidence
         f_np = f_val.components.item()

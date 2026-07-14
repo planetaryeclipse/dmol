@@ -1,3 +1,5 @@
+from enum import Enum
+
 import torch
 
 from dmol.diff_mfld.connection.base import Connection
@@ -285,3 +287,21 @@ def approx_log_covar[M: Manifold](
 
     v_covar = v_partials + torch.einsum("k,ijk->ij", v.components, conns)
     return Tensor[TensorBundle[1, 1]][conn.bundle.base](v_covar)
+
+
+class LogMapCovarMethod(Enum):
+    DEFAULT = (approx_log_covar, {"approx_order": 4})
+    APPROX_O1 = (approx_log_covar, {"approx_order": 1})
+    APPROX_O2 = (approx_log_covar, {"approx_order": 2})
+    APPROX_O3 = (approx_log_covar, {"approx_order": 3})
+    APPROX_O4 = (approx_log_covar, {"approx_order": 4})
+
+    def __call__(
+        self, p: Point | torch.Tensor, q: Point | torch.Tensor, v: Vec, conn: Connection
+    ) -> Tensor[TensorBundle[1,]]:
+        p = Point[conn.bundle.base](p)
+        q = Point[conn.bundle.base](q)
+
+        method, kwargs = self.value
+        log_covar = method(p, q, v, conn, **kwargs)
+        return log_covar

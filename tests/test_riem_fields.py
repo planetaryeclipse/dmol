@@ -1,12 +1,12 @@
 import torch
 
 from dmol.diff_mfld.connection.methods.geod_ivp_bvp import bvp_log_map
-from dmol.diff_mfld.connection.methods.geod_log_diff import approx_log_covar
+from dmol.diff_mfld.connection.methods.geod_log_diff import LogMapCovarMethod, approx_log_covar
 from dmol.diff_mfld.field.util import coord_repr
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.riemann import MetricLambdaField
 
-from dmol.diff_mfld.connection.methods.methods import LogMapMethod, LogMapCovarMethod
+from dmol.diff_mfld.connection.methods.methods import LogMapMethod
 from dmol.diff_mfld.field.riem_fields import RiemSqrDist, RiemLog
 from dmol.diff_mfld.testing import assert_tensors_equiv
 

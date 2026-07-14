@@ -78,7 +78,7 @@ class TestRiemGradDescent:
 
         metric = EuclideanMetricField[M]()
 
-        retr = lambda p, v: approx_exp_map(p, v, metric.levi_civita(), approx_order=approx_order)
+        retr = lambda p, v, conn: approx_exp_map(p, v, conn, approx_order=approx_order)
         result = rgd(
             cost,  # type: ignore
             p0,
@@ -107,7 +107,7 @@ class TestRiemGradDescent:
             lambda x, y: coord_repr([[1.0 + x**2 * y**2, 0.0], [0.0, 1.0 + x**2 * y**2]])  # type: ignore
         )
 
-        retr = lambda p, v: approx_exp_map(p, v, metric.levi_civita(), approx_order=approx_order)
+        retr = lambda p, v, conn: approx_exp_map(p, v, conn, approx_order=approx_order)
         result = rgd(
             cost,  # type: ignore
             p0,

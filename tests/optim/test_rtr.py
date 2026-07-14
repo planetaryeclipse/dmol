@@ -5,6 +5,7 @@ from torch.testing import assert_close
 from dmol.diff_mfld.bundle.tensor import Vec
 from dmol.diff_mfld.bundle.vector_bundle import ScalarBundle
 from dmol.diff_mfld.connection.methods.geod_approx import approx_exp_map
+from dmol.diff_mfld.connection.methods.methods import ExpMapMethod
 from dmol.diff_mfld.field.field_types import LambdaField
 from dmol.diff_mfld.field.util import coord_repr
 from dmol.diff_mfld.mfld import Manifold, Point
@@ -30,12 +31,13 @@ class TestRiemTrustRegion:
             cost,  # type: ignore
             p0,
             metric,
+            conn,
+            retr=ExpMapMethod.IVP,
             radius_max=0.15,
             radius_start=0.05,
             quality_step_thresh=0.15,
             tol=1e-4,
             max_iters=1000,
-            retr=lambda p, v: conn.exp(p, v)[0],
             h=lambda v: v,
         )
         assert result.success
@@ -69,12 +71,13 @@ class TestRiemTrustRegion:
             cost,  # type: ignore
             p0,
             metric,
+            conn,
+            retr=ExpMapMethod.IVP,
             radius_max=0.15,
             radius_start=0.05,
             quality_step_thresh=0.15,
             tol=1e-4,
             max_iters=1000,
-            retr=lambda p, v: conn.exp(p, v)[0],
             h=lambda v: v,
         )
         assert result.success
@@ -97,16 +100,17 @@ class TestRiemTrustRegion:
         cost = S(lambda x, y: coord_repr(1.0 + x**2 + y**2))  # type: ignore
         p0 = Point[M](torch.tensor([1.0, 2.0]))
 
+        retr = lambda p, v, conn: approx_exp_map(p, v, conn, approx_order)
         result = rtr(
             cost,  # type: ignore
             p0,
             metric,
+            retr=retr,
             radius_max=0.15,
             radius_start=0.05,
             quality_step_thresh=0.15,
             tol=1e-4,
             max_iters=1000,
-            retr=lambda p, v: approx_exp_map(p, v, conn, approx_order=approx_order),
             h=lambda v: v,
         )
         assert result.success
@@ -136,16 +140,17 @@ class TestRiemTrustRegion:
         cost = S(lambda x, y: coord_repr(1.0 + x**2 + y**2))  # type: ignore
         p0 = Point[M](torch.tensor([1.0, 2.0]))
 
+        retr = lambda p, v, conn: approx_exp_map(p, v, conn, approx_order)
         result = rtr(
             cost,  # type: ignore
             p0,
             metric,
+            retr=retr,
             radius_max=0.15,
             radius_start=0.05,
             quality_step_thresh=0.15,
             tol=1e-4,
             max_iters=1000,
-            retr=lambda p, v: approx_exp_map(p, v, conn, approx_order=approx_order),
             h=lambda v: v,
         )
         assert result.success

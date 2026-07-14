@@ -4,7 +4,7 @@ import torch
 
 from dmol.diff_mfld.bundle.tensor import Tensor, Vec
 from dmol.diff_mfld.bundle.vector_bundle import TangentBundle
-from dmol.diff_mfld.connection.base import Connection, ParallelTranspVecMethod
+from dmol.diff_mfld.connection.base import Connection
 from dmol.diff_mfld.connection.covar_diff import _TotalCovarField
 from dmol.diff_mfld.connection.methods.geod_ivp_bvp import bvp_log_map, ivp_exp_map
 from dmol.diff_mfld.connection.methods.parl_transp import ivp_parl_transp_vec
@@ -39,6 +39,6 @@ class TangentConnection(Connection[TangentBundle]):
         return bvp_log_map(p, q, self)
 
     @abstractmethod
-    def pt_vec(self, u: Vec, curve: Curve, method: ParallelTranspVecMethod | None = None) -> Vec:
+    def pt_vec(self, u: Vec, curve: Curve) -> Vec:
         Tensor[self.bundle].validate_tensor(u)
         return ivp_parl_transp_vec(u, curve, self)

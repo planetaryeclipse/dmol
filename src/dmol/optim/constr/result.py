@@ -14,6 +14,11 @@ class ConstrResult[M: Manifold]:
     f: Scalar[M]
     ineqs: list[Scalar[M]]
     eqs: list[Scalar[M]]
+
+    # not all algorithms provide these multipliers
+    ineq_mults: torch.Tensor | None = None
+    eq_mults: torch.Tensor | None = None
+
     f_hist: torch.Tensor | None = None
     ineqs_hist: torch.Tensor | None = None
     eqs_hist: torch.Tensor | None = None

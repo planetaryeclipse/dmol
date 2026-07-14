@@ -4,11 +4,12 @@ from typing import override
 
 from dmol.diff_mfld.bundle.vector_bundle import TensorBundle
 from dmol.diff_mfld.connection.covar_diff import FieldCustomCovar
+from dmol.diff_mfld.connection.methods.geod_log_diff import LogMapCovarMethod
 from dmol.diff_mfld.field.field_types import ScalarField, VectorField
 from dmol.diff_mfld.mfld import Point
 from dmol.diff_mfld.field.base import Field
 from dmol.diff_mfld.connection.base import Connection
-from dmol.diff_mfld.connection.methods.methods import LogMapMethod, LogMapCovarMethod
+from dmol.diff_mfld.connection.methods.methods import LogMapMethod
 from dmol.diff_mfld.riemann import MetricField, Metric, LeviCivitaConnection, _MetricLower
 
 
