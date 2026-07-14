@@ -38,19 +38,22 @@ def compute_soln_map_jacob[M: Manifold](
     p0 = Point[f.bundle.base](p0)
     p_optimal = Point[f.bundle.base](p_optimal)
 
+    # TODO: eventually refactor this function to work with the tensors instead of directly with the arrays
+
     f_diff = conn.total_covar(f)
     f_hess = conn.total_covar(f_diff)
-    ineqs_hess = [conn.total_covar(conn.total_covar(ineq)) for ineq in ineqs]
+    ineqs_diff = [conn.total_covar(ineq) for ineq in ineqs]
+    ineqs_hess = [conn.total_covar(ineq_diff) for ineq_diff in ineqs_diff]
 
     # computes the kkt dual (holds at the optimal point)
     kkt_map_dual = -f_hess(p_optimal).components
     for i in range(len(ineqs)):
         ineq_mult = ineq_mults[i]
         ineq_value = ineqs[i](p_optimal).components.item()
-        ineq_partials = ineqs[i].partials(p_optimal)
+        ineq_diff = ineqs_diff[i](p_optimal).components
         ineq_hess = ineqs_hess[i](p_optimal).components
 
-        kkt_map_dual += ineq_mult / ineq_value * torch.outer(ineq_partials, ineq_partials)
+        kkt_map_dual += ineq_mult / ineq_value * torch.outer(ineq_diff, ineq_diff)
         kkt_map_dual -= ineq_mult * ineq_hess
 
     # computes the kkt endomorphism (exists at the optimal point)
