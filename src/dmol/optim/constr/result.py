@@ -38,7 +38,7 @@ class ConstrResult[M: Manifold]:
         f_hist_tens = torch.zeros((num_samples,))
         ineqs_hist_tens = torch.zeros((num_ineqs, num_samples))
         eqs_hist_tens = torch.zeros((num_eqs, num_samples))
-        p_hist_tens = torch.zeros((self.p.manifold.dim))  # type: ignore
+        p_hist_tens = torch.zeros((self.p.manifold.dim, num_samples))  # type: ignore
 
         for i in range(num_samples):
             f_hist_tens[i] = f_hist[i]

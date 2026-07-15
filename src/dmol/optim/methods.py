@@ -11,7 +11,9 @@ from dmol.diff_mfld.riemann import MetricField
 from dmol.optim.constr.result import ConstrResult
 from dmol.optim.unconstr.result import UnconstrResult
 
-type Retraction[M: Manifold] = Callable[[Point[M], Vec[M], TangentConnection[M]], Point[M]]
+type Retraction[M: Manifold] = Callable[
+    [Point[M], Vec[M], TangentConnection[M]], Point[M]
+]
 
 type UnconstrOptimFn[M: Manifold] = Callable[
     Concatenate[

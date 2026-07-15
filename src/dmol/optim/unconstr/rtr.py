@@ -16,7 +16,11 @@ from scipy.optimize import minimize, NonlinearConstraint
 
 
 def _tr_subproblem_cost(
-    eta: np.ndarray, f: float, f_grad: np.ndarray, g: np.ndarray, h: Callable[[np.ndarray], np.ndarray] = lambda v: v
+    eta: np.ndarray,
+    f: float,
+    f_grad: np.ndarray,
+    g: np.ndarray,
+    h: Callable[[np.ndarray], np.ndarray] = lambda v: v,
 ) -> float:
     value = f + f_grad @ g @ eta + 0.5 * h(eta) @ g @ eta
     return value.item()
@@ -49,7 +53,11 @@ def _tr_subproblem[M: Manifold](
     result = minimize(
         fun=lambda eta: _tr_subproblem_cost(eta, f_val, f_grad_vec, g_mat, h_wrapper),
         constraints=[
-            NonlinearConstraint(fun=lambda eta: _tr_subproblem_constr(eta, g_mat, radius), lb=-np.inf, ub=0.0)
+            NonlinearConstraint(
+                fun=lambda eta: _tr_subproblem_constr(eta, g_mat, radius),  # type: ignore
+                lb=-np.inf,
+                ub=0.0,
+            )
         ],
         x0=eta_guess,
         tol=tol,
@@ -66,11 +74,11 @@ def rtr[M: Manifold](
     metric: MetricField[M],
     conn: TangentConnection[M] | None = None,
     retr: Retraction[M] = ExpMapMethod.DEFAULT,
+    tol: float = 1e-3,
     max_iters: int = 1000,
     save_hist: bool = False,
     show_debug: bool = False,
     *,
-    tol: float = 1e-3,
     radius_max: float = 0.5,
     radius_start: float = 0.1,  # in (0, radius_max)
     quality_step_thresh: float = 0.15,  # in [0, 0.25]
@@ -95,7 +103,7 @@ def rtr[M: Manifold](
     radius = radius_start
 
     if show_debug:
-        print(f"[rtr] initial: p={p.p}, f={f_val.components}")
+        print(f"[rtr] initial: p={p.p}, f={f_val.components}, radius: {radius}")
 
     f_hist = [f_val.components.item()] if save_hist else None
     p_hist = [p.p] if save_hist else None
@@ -104,7 +112,7 @@ def rtr[M: Manifold](
     i: int = 0
     for i in range(max_iters):
         if show_debug:
-            print(f"[rtr] i={i}, p={p.p}, f={f_val.components}")
+            print(f"[rtr] i={i}, p={p.p}, f={f_val.components}, radius: {radius}")
 
         if success:
             break

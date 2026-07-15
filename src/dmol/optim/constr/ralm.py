@@ -3,7 +3,12 @@ from typing import Sequence
 
 import torch
 
-from dmol.diff_mfld.connection.methods.methods import Distance, DistanceMethod, ExpMapMethod, LogMapMethod
+from dmol.diff_mfld.connection.methods.methods import (
+    Distance,
+    DistanceMethod,
+    ExpMapMethod,
+    LogMapMethod,
+)
 from dmol.diff_mfld.connection.tangent import TangentConnection
 from dmol.diff_mfld.field.field_types import FloatField, ScalarField
 from dmol.diff_mfld.mfld import Manifold, Point
@@ -13,7 +18,9 @@ from dmol.optim.methods import Retraction, UnconstrOptimFn
 from dmol.optim.unconstr.rgd import rgd
 
 
-def _eval_constrs_tens[M: Manifold](p: Point[M] | torch.Tensor, constrs: Sequence[ScalarField[M]]) -> torch.Tensor:
+def _eval_constrs_tens[M: Manifold](
+    p: Point[M] | torch.Tensor, constrs: Sequence[ScalarField[M]]
+) -> torch.Tensor:
     constr_vals = torch.zeros((len(constrs)))
     for i in range(len(constrs)):
         constr_vals[i] = constrs[i](p).components.item()
@@ -75,15 +82,22 @@ def ralm[M: Manifold](
 
     # setup parameterized fields (to be modified during optimization)
     penalty_field = FloatField[f.bundle.base](penalty)
-    ineq_mult_fields = [FloatField[f.bundle.base](ineq_mults[i].item()) for i in range(num_ineqs)]
-    eq_mult_fields = [FloatField[f.bundle.base](eq_mults[i].item()) for i in range(num_eqs)]
+    ineq_mult_fields = [
+        FloatField[f.bundle.base](ineq_mults[i].item()) for i in range(num_ineqs)
+    ]
+    eq_mult_fields = [
+        FloatField[f.bundle.base](eq_mults[i].item()) for i in range(num_eqs)
+    ]
 
     # setup the augmented lagrangian
     # TODO: refactor composition to allow using ints to allow using sum directly (w/out the explicit float zero here)
     ineq_constrs = sum(
-        ScalarField.max(0.0, ineq + mult / penalty_field) ** 2 for ineq, mult in zip(ineqs, ineq_mult_fields)
+        ScalarField.max(0.0, ineq + mult / penalty_field) ** 2
+        for ineq, mult in zip(ineqs, ineq_mult_fields)
     )
-    eq_constrs = sum((eq + mult / penalty_field) ** 2 for eq, mult in zip(eqs, eq_mult_fields))
+    eq_constrs = sum(
+        (eq + mult / penalty_field) ** 2 for eq, mult in zip(eqs, eq_mult_fields)
+    )
     aug_lagr = f + penalty_field / 2.0 * (ineq_constrs + eq_constrs)
 
     subsolver_tol = subsolver_tol_start
@@ -94,7 +108,9 @@ def ralm[M: Manifold](
     sigma: torch.Tensor
 
     if show_debug:
-        print(f"[ralm] initial: p={p.p}, f={f_val.components}")
+        print(
+            f"[ralm] initial: p={p.p}, f={f_val.components}, penalty={penalty}, ineq_mults={ineq_mults}, eq_mults={eq_mults}"
+        )
 
     f_hist = [f_val.components.item()] if save_hist else None
     ineqs_eval_hist = [ineqs_eval] if save_hist else None
@@ -105,7 +121,9 @@ def ralm[M: Manifold](
     i: int = 0
     for i in range(max_iters):
         if show_debug:
-            print(f"[ralm] i={i}, p={p.p}, f={f_val.components}")
+            print(
+                f"[ralm] i={i}, p={p.p}, f={f_val.components}, penalty={penalty}, ineq_mults={ineq_mults}, eq_mults={eq_mults}"
+            )
 
         if success:
             break
@@ -149,7 +167,9 @@ def ralm[M: Manifold](
             next_sigma = torch.max(next_ineqs_eval, -ineq_mults / penalty)
 
             next_penalty = penalty
-            if i > 0 and max([*torch.abs(next_eqs_eval), *torch.abs(next_sigma)]) > ratio * max(
+            if i > 0 and max(
+                [*torch.abs(next_eqs_eval), *torch.abs(next_sigma)]
+            ) > ratio * max(
                 [*torch.abs(eqs_eval), *torch.abs(sigma)]  # type: ignore
             ):
                 next_penalty *= penalty_growth
@@ -198,5 +218,5 @@ def ralm[M: Manifold](
     result.eq_mults = eq_mults
 
     if save_hist:
-        result.add_hist(f_hist, ineqs_hist, eqs_hist, p_hist)  # type: ignore
+        result.add_hist(f_hist, ineqs_eval_hist, eqs_eval_hist, p_hist)  # type: ignore
     return result
