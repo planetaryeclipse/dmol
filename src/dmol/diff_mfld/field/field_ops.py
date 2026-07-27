@@ -30,7 +30,7 @@ def _shared_field_add(lhs: Field | float | int, rhs: Field | float | int):
     if lhs_field.compatible_field(rhs_field):
         result_bundle = _get_compatible_bundle(lhs_field.bundle, rhs_field.bundle)
         return _AddField[result_bundle](lhs_field, rhs_field)
-    raise NotImplemented()
+    return NotImplemented
 
 
 def _shared_field_sub(lhs: Field | float | int, rhs: Field | float | int):
@@ -38,7 +38,7 @@ def _shared_field_sub(lhs: Field | float | int, rhs: Field | float | int):
     if lhs_field.compatible_field(rhs_field):
         result_bundle = _get_compatible_bundle(lhs_field.bundle, rhs_field.bundle)
         return _SubField[result_bundle](lhs_field, rhs_field)
-    raise NotImplemented()
+    return NotImplemented
 
 
 def _shared_field_mul(lhs: Field | float | int, rhs: Field | float | int):
@@ -269,7 +269,7 @@ class _MulField(FieldCustomCovar):
         elif rhs_scalar:
             # covariant index of scalar field differential already at correct location
             term_1 = conn.total_covar(self._lhs) * self._rhs
-            term_2 = self._lhs * conn.total_covar(self._rhs)
+            term_2 = _ProductField.create_product((self._lhs, conn.total_covar(self._rhs)))
             return term_1 + term_2
         else:
             raise RuntimeError()  # not reachable

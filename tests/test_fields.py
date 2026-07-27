@@ -3,11 +3,12 @@ import pytest
 
 from torch.testing import assert_close
 
-from dmol.diff_mfld.bundle.tensor import Cov
-from dmol.diff_mfld.field.field_types import FloatField, LambdaField, ScalarField
+from dmol.diff_mfld.bundle.tensor import Cov, Scalar, Tensor
+from dmol.diff_mfld.field.field_types import CovectorField, FloatField, LambdaField, ScalarField
 from dmol.diff_mfld.mfld import Manifold, Point
 from dmol.diff_mfld.bundle.vector_bundle import (
     ScalarBundle,
+    TensorBundle,
     VectorBundle,
 )
 
@@ -198,6 +199,74 @@ class TestCovarDeriv:
             assert_close(s_hess_nonlinear(p).components, s_hess_euclid(p).components)
         with pytest.raises(AssertionError):
             assert_close(nonlinear_conn.coeffs(p), torch.zeros((2, 2, 2)))
+
+    def test_scalar_mul(self):
+        M = Manifold[2]
+        V = VectorBundle[3, M]
+        S = ScalarBundle[M]
+
+        metric = EuclideanMetricField[M]()
+        conn = metric.levi_civita()
+
+        f = LambdaField[S](lambda x, y: coord_repr(x**2 * y**2))  # type: ignore
+        g = LambdaField[S](lambda x, y: coord_repr(x**2 + y**2))  # type: ignore
+
+        mult_1 = f * g
+        mult_2 = g * f
+
+        assert ScalarField[M].compatible_field(mult_1)
+        assert ScalarField[M].compatible_field(mult_2)
+
+        x, y = 1.0, 2.0
+        p = Point[M](torch.tensor([x, y]))
+
+        mult_1_diff = conn.total_covar(mult_1)
+        mult_2_diff = conn.total_covar(mult_2)
+
+        assert CovectorField[M].compatible_field(mult_1_diff)
+        assert CovectorField[M].compatible_field(mult_2_diff)
+
+        f_val = x**2 * y**2
+        g_val = x**2 + y**2
+
+        f_diff_val = torch.tensor([2 * x * y**2, 2 * x**2 * y])
+        g_diff_val = torch.tensor([2 * x, 2 * y])
+
+        f_hess_val = torch.tensor(
+            [
+                [2 * y**2, 4 * x * y],
+                [4 * x * y, 2 * x**2],
+            ]
+        )
+        g_hess_val = 2 * torch.eye(2)
+
+        mult_diff_tens_val = f_diff_val * g_val + f_val * g_diff_val
+        assert_tensors_equiv(
+            mult_1_diff(p),
+            Cov[M](mult_diff_tens_val),
+        )
+        assert_tensors_equiv(
+            mult_2_diff(p),
+            Cov[M](mult_diff_tens_val),
+        )
+
+        mult_1_hess = conn.total_covar(mult_1_diff)
+        mult_2_hess = conn.total_covar(mult_2_diff)
+
+        mult_hess_tens_val = (
+            f_hess_val * g_val
+            + torch.outer(f_diff_val, g_diff_val)
+            + torch.outer(g_diff_val, f_diff_val)
+            + f_val * g_hess_val
+        )
+        assert_tensors_equiv(
+            mult_1_hess(p),
+            Tensor[TensorBundle[0, 2]][M](mult_hess_tens_val),
+        )
+        assert_tensors_equiv(
+            mult_2_hess(p),
+            Tensor[TensorBundle[0, 2]][M](mult_hess_tens_val),
+        )
 
     def test_euclidean_metric_field(self):
         M = Manifold[2]

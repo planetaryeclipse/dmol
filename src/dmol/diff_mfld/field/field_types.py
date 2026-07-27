@@ -16,7 +16,7 @@ class ScalarField(Field[ScalarBundle]):
         return super().__call__(p)  # type: ignore
 
     @staticmethod
-    def max(lhs: Field | float, rhs: Field | float) -> Field | float:
+    def max(lhs: Field | float, rhs: Field | float) -> Field:
         raise NotImplementedError()  # to be overriden
 
 

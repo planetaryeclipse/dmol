@@ -34,7 +34,7 @@ class Tensor(metaclass=PartialSpec):
                     for prod_bundle in bundle.bundles
                     if prod_bundle.rank is None or (prod_bundle.rank is not None and prod_bundle.rank > 0)
                 ]
-            )
+            )  # type: ignore
         elif bundle.rank == 0:
             return tuple()
         return (bundle.rank,)
@@ -101,7 +101,7 @@ class Tensor(metaclass=PartialSpec):
         if isinstance(other, Tensor):
             result_bundle = _get_compatible_bundle(self.bundle, other.bundle)
             return Tensor[result_bundle](self.components + other.components)
-        raise NotImplemented()
+        return NotImplemented
 
     def __sub__(self, other):
         return self + (-other)
@@ -116,7 +116,7 @@ class Tensor(metaclass=PartialSpec):
                 raise ValueError()
         elif isinstance(other, float):
             return self.__class__(self.components * other)
-        raise NotImplemented()
+        return NotImplemented
 
     def __rmul__(self, other):
         return self.__mul__(other)
@@ -129,7 +129,7 @@ class Tensor(metaclass=PartialSpec):
                 raise ValueError("tensor is only divisble by a scalar")
         elif type(other) is float:
             return self.__class__(self.components / other)
-        raise NotImplemented()
+        return NotImplemented
 
     def __rtruediv__(self, other):
         if self.bundle.rank == 0:
@@ -137,7 +137,7 @@ class Tensor(metaclass=PartialSpec):
                 return other.__class__(other.components / self.components)
             elif type(other) is float:
                 return self.__class__(other / self.components)
-            raise NotImplemented()
+            return NotImplemented
         raise ValueError("divisor tensor must be a scalar")
 
     def __pow__(self, other):
